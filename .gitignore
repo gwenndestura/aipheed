@@ -1,0 +1,41 @@
+﻿# Virtual environment
+venv/
+
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+
+# Environment variables
+.env
+
+# Model files — never commit
+models/
+*.pkl
+
+# Raw data — never commit
+data/raw/
+
+# Processed data
+data/processed/
+data/eval/
+
+# MLflow
+mlruns/
+
+# VS Code
+.vscode/
+
+# pytest cache
+.pytest_cache/
+
+# mypy cache
+.mypy_cache/
+
+# ruff cache
+.ruff_cache/
+
+# Distribution
+dist/
+build/
+*.egg-info/
