@@ -1,0 +1,7 @@
+pytest
+httpx
+ruff
+mypy
+jupyter
+ipykernel
+matplotlib
