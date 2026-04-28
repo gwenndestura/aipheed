@@ -47,3 +47,5 @@ mlruns/
 dist/
 build/
 *.egg-info/
+
+.claude/
