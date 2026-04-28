@@ -31,18 +31,29 @@ class ForecastHistoryResponse(BaseModel):
 
 
 class MunicipalForecastRecord(BaseModel):
-    """Represents one municipal disaggregated forecast."""
+    """
+    Represents one municipal/city disaggregated forecast.
+    disaggregation_label is NEVER null per Backend Guide Rule 8.
+    These are spatially disaggregated estimates from province forecasts,
+    not independent municipal forecasts.
+    """
     quarter: str
     province_code: str
+    lgu_code: str
     municipality_name: str
     risk_index: float
-    disaggregation_label: str = "Spatially disaggregated estimate derived from province-level forecast. Municipal uncertainty is higher than province uncertainty."
+    disaggregation_label: str  # always populated — never null
+    data_sufficiency_flag: str | None
 
     model_config = {"from_attributes": True}
 
 
 class MunicipalForecastResponse(BaseModel):
-    """Response for GET /v1/forecasts/municipal"""
+    """
+    Response for GET /v1/forecasts/municipal
+    Returns all LGUs for a province and quarter.
+    Every row includes disaggregation_label.
+    """
     province_code: str
     quarter: str
     data: list[MunicipalForecastRecord]
