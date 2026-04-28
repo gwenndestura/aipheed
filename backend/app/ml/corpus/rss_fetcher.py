@@ -30,7 +30,7 @@ logger = logging.getLogger(__name__)
 
 CREDIBLE_DOMAINS: frozenset[str] = frozenset(
     {
-        # National broadsheets
+        # ── National broadsheets ────────────────────────────────────────────
         "inquirer.net",
         "newsinfo.inquirer.net",
         "business.inquirer.net",
@@ -40,42 +40,77 @@ CREDIBLE_DOMAINS: frozenset[str] = frozenset(
         "mb.com.ph",
         "philstar.com",
         "manilatimes.net",
-        # Digital-native
+        # ── Major TV network news ───────────────────────────────────────────
+        "gmanetwork.com",          # GMA Network News (largest PH TV network)
+        "news.abs-cbn.com",        # ABS-CBN News
+        # ── Digital-native / investigative ─────────────────────────────────
         "rappler.com",
+        "interaksyon.com",         # TV5 / Interaksyon (also at interaksyon.philstar.com)
+        "verafiles.org",           # VERA Files — fact-checking & investigative
+        "tribune.net.ph",          # Daily Tribune
         "sunstar.com.ph",
-        # State broadcaster
-        "ptvnews.ph",
-        # Business press
+        # ── State / government news ─────────────────────────────────────────
+        "ptvnews.ph",              # PTV — state broadcaster
+        "pna.gov.ph",              # Philippine News Agency — official state wire
+        "pia.gov.ph",              # Philippine Information Agency
+        # ── Government agency press releases ────────────────────────────────
+        "da.gov.ph",               # Department of Agriculture
+        "dswd.gov.ph",             # Dept. of Social Welfare and Development
+        "nfa.gov.ph",              # National Food Authority
+        "psa.gov.ph",              # Philippine Statistics Authority
+        "neda.gov.ph",             # National Economic and Development Authority
+        # ── Business press ──────────────────────────────────────────────────
         "businessmirror.com.ph",
         "bworldonline.com",
     }
 )
 
 FEED_URLS: list[str] = [
-    # Inquirer subdomains
+    # ── Philippine Daily Inquirer ─────────────────────────────────────────
     "https://newsinfo.inquirer.net/feed",
+    "https://newsinfo.inquirer.net/category/regions/feed",    # regional stories
+    "https://newsinfo.inquirer.net/category/nation/feed",
     "https://business.inquirer.net/feed",
     "https://globalnation.inquirer.net/feed",
     "https://lifestyle.inquirer.net/feed",
-    "https://newsinfo.inquirer.net/category/nation/feed",
     "https://cebudailynews.inquirer.net/feed",
-    # Philippine Star
+    # ── Philippine Star ───────────────────────────────────────────────────
     "https://www.philstar.com/rss/headlines",
     "https://www.philstar.com/rss/business",
-    # Manila Bulletin
+    "https://www.philstar.com/rss/nation",
+    # ── Manila Bulletin ───────────────────────────────────────────────────
     "https://mb.com.ph/rss/nation",
     "https://mb.com.ph/rss/business",
-    # Manila Times
+    "https://mb.com.ph/rss/provinces",          # provincial / regional stories
+    "https://mb.com.ph/rss/agriculture",        # agriculture & farming
+    # ── Manila Times ──────────────────────────────────────────────────────
     "https://www.manilatimes.net/news/feed",
-    # Rappler
+    "https://www.manilatimes.net/category/business/feed",
+    "https://www.manilatimes.net/category/agriculture/feed",
+    # ── Rappler ───────────────────────────────────────────────────────────
     "https://www.rappler.com/feed/",
-    # SunStar
+    "https://www.rappler.com/nation/feed/",
+    "https://www.rappler.com/business/feed/",
+    "https://www.rappler.com/science/climate-environment/feed/",
+    # ── GMA Network News (largest PH TV network) ─────────────────────────
+    "https://data.gmanetwork.com/gno/rss/news/feed.xml",
+    "https://data.gmanetwork.com/gno/rss/news/nation/feed.xml",
+    "https://data.gmanetwork.com/gno/rss/news/regions/feed.xml",
+    "https://data.gmanetwork.com/gno/rss/money/feed.xml",
+    "https://data.gmanetwork.com/gno/rss/lifestyle/food/feed.xml",
+    # ── Daily Tribune ─────────────────────────────────────────────────────
+    "https://tribune.net.ph/feed/",
+    # ── SunStar (multi-city network) ──────────────────────────────────────
     "https://www.sunstar.com.ph/feed",
-    # PTV News
+    # ── PTV News (state broadcaster) ──────────────────────────────────────
     "https://ptvnews.ph/feed/",
-    # Business press
+    # ── Business press ────────────────────────────────────────────────────
     "https://businessmirror.com.ph/feed",
     "https://www.bworldonline.com/feed",
+    "https://www.bworldonline.com/economy/feed/",
+    "https://www.bworldonline.com/agribusiness/feed/",
+    # ── ABS-CBN News ──────────────────────────────────────────────────────
+    "https://news.abs-cbn.com/rss",
 ]
 
 # ---------------------------------------------------------------------------
@@ -167,7 +202,15 @@ CALABARZON_KEYWORDS: frozenset[str] = frozenset(
         "pamimigay ng pagkain", "distribusyon ng pagkain",
         "libreng almusal", "libreng tanghalian",
 
-        # Latent risk signals — HungerGist (2023)
+        # ── HungerGist (Ahn et al., 2023) — 8 gist-topic taxonomy ──────────
+        # HungerGist proved that textual signals at the SENTENCE level that
+        # predict food insecurity span 8 topics, not just food/agriculture.
+        # High-crisis topics: Food Supply, Healthcare, Civil Life, Leadership.
+        # Low-crisis topics:  Finance/Economy, Regional Development, Lands.
+        # All 8 are included below so the keyword filter does not discard
+        # articles whose food insecurity signal appears in non-food sentences.
+
+        # Topic 1 — Food Supply & Nutrition (nutrition programs, growth data)
         "stunting", "wasting", "underweight", "iodine", "anemia",
         "fnri", "nutrition", "nutrisyon", "supplementary feeding",
         "4ps", "pantawid", "conditional cash transfer", "cct",
@@ -176,6 +219,77 @@ CALABARZON_KEYWORDS: frozenset[str] = frozenset(
         "pagstunting", "malnourished na bata", "batang hindi lumalaki",
         "kulang sa sustansya", "sustansya", "bitamina", "mineral",
         "supplemento", "lugaw", "arroz caldo", "lugaw program",
+        # Fish kill / aquaculture collapse → food supply disruption signal
+        "fish kill", "fish death", "dead fish", "marine pollution",
+        "red tide", "algal bloom", "aquaculture damage", "fishing ban",
+        "patay na isda", "fish ban", "isda patay",
+
+        # Topic 2 — Healthcare as food crisis predictor
+        # HungerGist Fig. 3: healthcare sentences predict HIGH food crisis.
+        # "health crisis throwing families into misery" / "delayed social assistance"
+        "malnutrition hospitalized", "hospitalized children hunger",
+        "social assistance delayed", "social protection delayed",
+        "healthcare crisis poor", "health emergency families",
+        "delayed ayuda", "hindi nabibigay na tulong",
+        "health budget cut", "hospital closures poor",
+        "wasting hospitalization", "severe acute malnutrition",
+        "sam wasting child", "therapeutic feeding",
+        "delayed 4ps", "pantawid delayed", "cct delayed",
+        "social welfare delayed", "dswd delayed",
+
+        # Topic 3 — Leadership / Governance as food crisis predictor
+        # HungerGist: political stability sentences correlate with low crisis;
+        # electoral fraud / governance failure → high crisis.
+        "price control order", "executive order rice",
+        "nfa rice order", "agriculture policy reform",
+        "food security policy", "food price regulation",
+        "government rice program", "bigas program",
+        "rice tarrification", "food import policy",
+        "kakulangan sa pagpapatupad", "food governance",
+
+        # Topic 4 — Finance / Economic Development
+        # HungerGist Fig. 3: finance/economic sentences predict LOW crisis.
+        # Budget allocations for agriculture/welfare are positive signals.
+        "agricultural subsidy", "agriculture budget",
+        "farm support budget", "livelihood fund",
+        "dswd budget", "social protection budget",
+        "poverty reduction program", "economic recovery food",
+        "government agricultural investment", "ayuda budget",
+        "pondo para sa magsasaka", "agricultural credit",
+        "crop insurance", "insurance palay", "agri loan",
+
+        # Topic 5 — Regional Development (low crisis predictor)
+        # Infrastructure development → improved food distribution access.
+        "farm-to-market road", "farm to market",
+        "post-harvest facility", "cold storage",
+        "irrigation project", "water impounding",
+        "agricultural infrastructure", "rural road",
+        "provincial market", "regional development",
+        "konektibidad", "kalsada para sa magsasaka",
+
+        # Topic 6 — Land Use / Agricultural Lands
+        # HungerGist: land sentences distinguish crisis levels.
+        # Land conversion AWAY from agriculture is a food risk signal.
+        "land conversion", "agricultural land converted",
+        "farmland loss", "reclassification agricultural",
+        "urban sprawl farmland", "lupa ng magsasaka",
+        "land use change", "cropland loss",
+
+        # Topic 7 — Civil Life & Displacement
+        # HungerGist: civil life sentences (displacement, family misery) → high crisis.
+        "displaced families food", "evacuees food",
+        "informal settlers food", "squatter food",
+        "families in misery", "pamilyang nagugutom",
+        "community food access", "barangay hunger",
+        "internally displaced", "refugee food",
+        "nailikas na pamilya pagkain",
+
+        # Topic 8 — Social Instability (HungerGist multi-task component)
+        # Social insecurity co-task in HungerGist improved food crisis RMSE.
+        "social unrest food", "protest food prices",
+        "strike worker food", "rally food prices",
+        "welga dahil sa presyo", "demonstrasyon presyo",
+        "peace and order food", "peace order pagkain",
 
         # Spatial bias / rural coverage — Valentin et al. (2024)
         "rural", "municipality", "barangay", "lgu", "town",

@@ -7,7 +7,7 @@ class Settings(BaseSettings):
 
     DATABASE_URL: str = "sqlite+aiosqlite:///./aipheed.db"
     SECRET_KEY: str = "changeme"
-    GNEWS_API_KEY: str = "d4125c0a1f1b58eceff6bd19e23610ab"
+    GNEWS_API_KEY: str = ""
     MODEL_PATH: str = "models"
     PSA_MAIN_URL: str = "https://psa.gov.ph"
     PSA_RSSO_URL: str = "https://rsso04a.psa.gov.ph"

@@ -141,8 +141,27 @@ def fetch_gnews_articles(
     records: list[dict] = []
     seen_links: set[str] = set()
 
+    # Build a diverse query list covering national + province-level signals
+    queries: list[str] = []
+    # Province-level
     for province in CALABARZON_PROVINCES:
-        query = f"food prices Philippines {province}"
+        queries.append(f"food prices Philippines {province}")
+        queries.append(f"food insecurity {province} Philippines")
+    # National food/price signals
+    queries += [
+        "rice price hike Philippines",
+        "food inflation Philippines 2024",
+        "Philippines food shortage supply",
+        "CALABARZON food security",
+        "Philippines rice supply NFA",
+        "typhoon crop damage Philippines harvest",
+        "unemployment poverty CALABARZON Philippines",
+        "OFW remittance Philippines economy",
+        "food CPI Philippines PSA",
+        "Philippines agriculture calamity flood",
+    ]
+
+    for query in queries:
         logger.info("GNews query: '%s'", query)
 
         params = {
@@ -156,7 +175,7 @@ def fetch_gnews_articles(
         }
 
         articles = _gnews_get(params, api_key)
-        logger.info("GNews returned %d articles for province '%s'", len(articles), province)
+        logger.info("GNews: %d articles for '%s'", len(articles), query)
 
         for article in articles:
             url: str = article.get("url", "")

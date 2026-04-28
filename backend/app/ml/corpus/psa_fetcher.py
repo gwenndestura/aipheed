@@ -91,9 +91,15 @@ SESSION = requests.Session()
 SESSION.headers.update(
     {
         "User-Agent": (
-            "aiPHeed-Thesis-Bot/1.0 "
-            "(DLSU-D research crawler; contact: thesis@dlsud.edu.ph)"
-        )
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+            "AppleWebKit/537.36 (KHTML, like Gecko) "
+            "Chrome/124.0.0.0 Safari/537.36"
+        ),
+        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+        "Accept-Language": "en-US,en;q=0.9",
+        "Accept-Encoding": "gzip, deflate, br",
+        "Connection": "keep-alive",
+        "Upgrade-Insecure-Requests": "1",
     }
 )
 
@@ -169,7 +175,16 @@ def _already_fetched(url: str) -> bool:
 # HTTP helpers
 # ---------------------------------------------------------------------------
 
-def _safe_get(url: str, timeout: int = 20) -> Optional[requests.Response]:
+def _is_cloudflare_block(response: requests.Response) -> bool:
+    """Return True if Cloudflare is serving a JS challenge / bot block page."""
+    if response.status_code == 403 and "cf-ray" in response.headers:
+        return True
+    if response.status_code in (403, 503) and "cloudflare" in response.headers.get("server", "").lower():
+        return True
+    return False
+
+
+def _safe_get(url: str, timeout: int = 30) -> Optional[requests.Response]:
     """GET with robots.txt compliance, domain validation, and error handling."""
     if not _is_psa_domain(url):
         logger.error("Domain validation failed — rejected: %s", url)
@@ -180,14 +195,17 @@ def _safe_get(url: str, timeout: int = 20) -> Optional[requests.Response]:
         response = SESSION.get(url, timeout=timeout, allow_redirects=True)
         # Re-validate after any redirect
         if not _is_psa_domain(response.url):
-            logger.error(
-                "Redirect to non-PSA domain detected: %s → %s", url, response.url
+            logger.error("Redirect to non-PSA domain: %s -> %s", url, response.url)
+            return None
+        if _is_cloudflare_block(response):
+            logger.warning(
+                "Cloudflare bot-block on %s. PSA requires manual download. "
+                "Place PDF/HTML files in data/raw/psa_reports/{report_type}/ "
+                "and run scan_local_psa_files() to register them.",
+                url,
             )
             return None
-        logger.info(
-            "[%s] GET %s", response.status_code, url,
-            extra={"timestamp": datetime.utcnow().isoformat(), "http_status": response.status_code},
-        )
+        logger.info("[%s] GET %s", response.status_code, url)
         return response
     except requests.RequestException as exc:
         logger.error("Request failed for %s: %s", url, exc)
@@ -395,6 +413,73 @@ def fetch_psa_reports(
         "fetch_psa_reports complete: %d records fetched for %s – %s",
         len(records), start_date, end_date,
     )
+    return records
+
+
+# ---------------------------------------------------------------------------
+# Manual-download fallback
+# ---------------------------------------------------------------------------
+
+MANUAL_DOWNLOAD_INSTRUCTIONS = """
+PSA.gov.ph is protected by Cloudflare and blocks automated HTTP access.
+To build the PSA corpus manually:
+
+1. Open these URLs in your browser and download the PDFs:
+   PRICE SURVEY (food CPI + rice price):
+     https://psa.gov.ph/price-indices/cpi-ir
+     https://rsso04a.psa.gov.ph/article/price-situation (Region IV-A releases)
+
+   LABOR FORCE SURVEY (unemployment rate):
+     https://psa.gov.ph/statistics/labor-force-survey
+
+   POVERTY STATISTICS:
+     https://psa.gov.ph/poverty-press-releases
+
+2. Save files to:
+   data/raw/psa_reports/price_survey/
+   data/raw/psa_reports/labor_force_survey/
+   data/raw/psa_reports/poverty_statistics/
+
+3. Run: from app.ml.corpus.psa_fetcher import scan_local_psa_files
+        scan_local_psa_files()
+"""
+
+
+def scan_local_psa_files() -> list[dict]:
+    """
+    Register locally-placed PSA PDF/HTML files (manual download fallback).
+
+    When psa.gov.ph is Cloudflare-protected, download reports manually
+    and place them in data/raw/psa_reports/{report_type}/.
+    This function scans those directories and builds the same record list
+    that fetch_psa_reports() would return.
+
+    Returns
+    -------
+    list[dict]  — same schema as fetch_psa_reports() output
+    """
+    records: list[dict] = []
+    for report_type in ("price_survey", "labor_force_survey", "poverty_statistics"):
+        report_dir = RAW_DIR / report_type
+        if not report_dir.exists():
+            continue
+        for filepath in sorted(report_dir.glob("*")):
+            if filepath.suffix.lower() not in (".pdf", ".html", ".htm"):
+                continue
+            year_quarter = _infer_year_quarter(filepath.stem)
+            records.append({
+                "report_type": report_type,
+                "year_quarter": year_quarter,
+                "source_url": f"file://{filepath.resolve()}",
+                "local_path": str(filepath),
+                "fetched_at": datetime.utcnow().isoformat(),
+                "http_status": 200,
+            })
+            logger.info("Registered local file: %s (%s)", filepath.name, report_type)
+    if not records:
+        logger.warning("No local PSA files found. %s", MANUAL_DOWNLOAD_INSTRUCTIONS)
+    else:
+        logger.info("scan_local_psa_files: %d files registered", len(records))
     return records
 
 

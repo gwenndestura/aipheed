@@ -16,9 +16,17 @@ models/
 # Raw data — never commit
 data/raw/
 
-# Processed data
-data/processed/
-data/eval/
+# Processed parquets — derived from raw, reproducible via run_primary_data_collection.py
+# Track only the manifest, ignore the parquets
+data/processed/*.parquet
+!data/processed/PRIMARY_DATA_MANIFEST.md
+
+# Reference CSVs (full 142-LGU table, SAE 2021) — gitignored if added
+data/reference/
+
+# Eval outputs — regenerated each run
+data/eval/*.json
+
 
 # MLflow
 mlruns/
