@@ -47,6 +47,7 @@ import hashlib
 import logging
 import os
 import time
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timezone
 from urllib.parse import urlencode
 
@@ -71,7 +72,8 @@ GOOGLE_CSE_CX = os.getenv("GOOGLE_CSE_CX", "")
 
 REQUEST_DELAY = 1.0
 RESULTS_PER_PAGE = 10
-MAX_PAGES = 10  # 100 results max per query
+MAX_PAGES = 10          # 100 results max per query
+CSE_MAX_WORKERS = 3     # 3 threads × 1.0s ≈ 3 req/s
 
 
 # ---------------------------------------------------------------------------
@@ -319,7 +321,7 @@ def fetch_google_cse_articles(
     records: list[dict] = []
     seen_ids: set[str] = set()
 
-    # ── Per-LGU queries ───────────────────────────────────────────────────
+    # ── Build query list ──────────────────────────────────────────────────
     lgu_queries: list[str] = []
     for province, lgus in CALABARZON_LGUS.items():
         for lgu in lgus:
@@ -329,36 +331,39 @@ def fetch_google_cse_articles(
             lgu_queries.append(f'"{province}" {sub}')
 
     all_queries = lgu_queries + THEMATIC_QUERIES
+    logger.info("Google CSE: %d total queries, workers=%d", len(all_queries), CSE_MAX_WORKERS)
 
-    logger.info("Google CSE: %d total queries", len(all_queries))
-
-    for query in all_queries:
+    def _fetch_one_query(query: str) -> list[dict]:
+        """Fetch all pages for one CSE query."""
+        results: list[dict] = []
         for page_num in range(MAX_PAGES):
             start_index = page_num * RESULTS_PER_PAGE + 1
             data = _fetch_page(query, start_index, date_restrict)
             if not data:
                 break
-
             items = data.get("items") or []
             if not items:
                 break
-
             for item in items:
                 record = _parse_item(item)
-                if record is None:
-                    continue
+                if record is not None:
+                    results.append(record)
+            total_results = int(
+                data.get("searchInformation", {}).get("totalResults", 0)
+            )
+            if start_index + len(items) - 1 >= min(total_results, 100):
+                break
+        return results
+
+    with ThreadPoolExecutor(max_workers=CSE_MAX_WORKERS) as executor:
+        futures = [executor.submit(_fetch_one_query, q) for q in all_queries]
+        for future in as_completed(futures):
+            for record in future.result():
                 key = record["article_id"]
                 if key in seen_ids:
                     continue
                 seen_ids.add(key)
                 records.append(record)
-
-            total_results = int(
-                data.get("searchInformation", {}).get("totalResults", 0)
-            )
-            fetched_so_far = start_index + len(items) - 1
-            if fetched_so_far >= min(total_results, 100):
-                break
 
     logger.info(
         "fetch_google_cse_articles: %d credible articles (%s to %s)",

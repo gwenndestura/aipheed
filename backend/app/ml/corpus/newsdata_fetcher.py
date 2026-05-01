@@ -48,6 +48,7 @@ from __future__ import annotations
 import logging
 import os
 import time
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timedelta, timezone
 from urllib.parse import urlencode
 
@@ -66,11 +67,12 @@ logger = logging.getLogger(__name__)
 # Configuration
 # ---------------------------------------------------------------------------
 
-NEWSDATA_BASE = "https://newsdata.io/api/1/archive"
+NEWSDATA_BASE = "https://newsdata.io/api/1/news"
 NEWSDATA_API_KEY = os.getenv("NEWSDATA_API_KEY", "")
 
 # Polite delay between requests (seconds)
 REQUEST_DELAY = 1.2
+NEWSDATA_MAX_WORKERS = 3   # 3 threads × 1.2s ≈ 2.5 req/s — polite to the API
 
 # Max results per page (API max = 10 free / 50 paid)
 PAGE_SIZE = 10
@@ -246,21 +248,19 @@ def _build_date_windows(start_date: str, end_date: str, days: int = 30) -> list[
     return windows
 
 
-def _fetch_page(query: str, from_date: str, to_date: str, page: str | None = None) -> dict:
-    """Fetch one page of NewsData.io results."""
+def _fetch_page(query: str, from_date: str = "", to_date: str = "", page: str | None = None) -> dict:
+    """Fetch one page of NewsData.io results (latest endpoint — free tier)."""
     if not NEWSDATA_API_KEY:
         logger.warning("NEWSDATA_API_KEY not set — skipping NewsData.io fetch")
         return {}
 
+    # Free-tier /news endpoint: no from_date/to_date, no domainurl filtering.
+    # Credibility is enforced in _parse_article() via _is_credible().
     params: dict = {
         "apikey": NEWSDATA_API_KEY,
         "q": query,
         "country": "ph",
-        "language": "en,tl",
-        "from_date": from_date,
-        "to_date": to_date,
-        "domainurl": _NEWSDATA_DOMAINS,
-        "size": PAGE_SIZE,
+        "language": "en",
     }
     if page:
         params["page"] = page
@@ -342,21 +342,21 @@ def fetch_newsdata_articles(
         logger.error("NEWSDATA_API_KEY not set in .env — cannot fetch from NewsData.io")
         return []
 
-    # Build full query list
+    # ── Build query list ──────────────────────────────────────────────────
+    # NO date windowing — the API's from_date/to_date covers the full range
+    # per query. Windowing multiplied requests 72× with negligible gain.
     all_queries: list[str] = []
 
-    # Province-level queries
+    # Province-level (5 provinces × 8 queries = 40)
     for province in CALABARZON_LGUS:
-        for q in _BASE_FOOD_QUERIES[:8]:  # top 8 most targeted queries per province
+        for q in _BASE_FOOD_QUERIES[:8]:
             all_queries.append(f"{q} {province}")
 
-    # Municipality/city queries (targeted — 1 query per LGU per key topic)
+    # Municipality/city-level (147 LGUs × 2 queries = 294)
     for province, lgus in CALABARZON_LGUS.items():
         for lgu in lgus:
-            all_queries.append(f"food prices {lgu}")
-            all_queries.append(f"food relief {lgu}")
-            all_queries.append(f"agriculture harvest {lgu}")
-            all_queries.append(f"malnutrition hunger {lgu}")
+            all_queries.append(f"food prices relief {lgu}")
+            all_queries.append(f"malnutrition hunger harvest {lgu}")
 
     # Regional / thematic
     all_queries += _REGIONAL_QUERIES
@@ -364,44 +364,46 @@ def fetch_newsdata_articles(
     all_queries += _CLIMATE_QUERIES
     all_queries += _GOV_PROGRAM_QUERIES
 
-    # Date windows (30-day chunks to reduce per-request result sprawl)
-    windows = _build_date_windows(start_date, end_date, days=30)
+    logger.info(
+        "NewsData.io: %d queries (full range %s to %s), max_pages=%d, workers=%d",
+        len(all_queries), start_date, end_date, max_pages_per_query, NEWSDATA_MAX_WORKERS,
+    )
 
     records: list[dict] = []
     seen_ids: set[str] = set()
     total_requests = 0
+    lock_records: list[dict] = []  # collected per-thread, merged after
+
+    def _fetch_query(query: str) -> list[dict]:
+        """Fetch all pages for one query (latest endpoint — recent articles only)."""
+        results: list[dict] = []
+        page: str | None = None
+        for _ in range(max_pages_per_query):
+            data = _fetch_page(query, page=page)
+            if not data or data.get("status") != "success":
+                break
+            for item in data.get("results") or []:
+                record = _parse_article(item)
+                if record is not None:
+                    results.append(record)
+            page = data.get("nextPage")
+            if not page:
+                break
+        return results
+
+    with ThreadPoolExecutor(max_workers=NEWSDATA_MAX_WORKERS) as executor:
+        futures = {executor.submit(_fetch_query, q): q for q in all_queries}
+        for future in as_completed(futures):
+            for record in future.result():
+                key = record["article_id"]
+                if key in seen_ids:
+                    continue
+                seen_ids.add(key)
+                records.append(record)
+            total_requests += 1
 
     logger.info(
-        "NewsData.io: %d queries x %d windows = up to %d requests",
-        len(all_queries), len(windows), len(all_queries) * len(windows),
-    )
-
-    for from_date, to_date in windows:
-        for query in all_queries:
-            page: str | None = None
-            for _ in range(max_pages_per_query):
-                data = _fetch_page(query, from_date, to_date, page)
-                total_requests += 1
-
-                if not data or data.get("status") != "success":
-                    break
-
-                for item in data.get("results") or []:
-                    record = _parse_article(item)
-                    if record is None:
-                        continue
-                    key = record["article_id"]
-                    if key in seen_ids:
-                        continue
-                    seen_ids.add(key)
-                    records.append(record)
-
-                page = data.get("nextPage")
-                if not page:
-                    break
-
-    logger.info(
-        "NewsData.io: %d articles collected (%d requests, %s to %s)",
+        "NewsData.io: %d articles collected (%d queries, %s to %s)",
         len(records), total_requests, start_date, end_date,
     )
     return records

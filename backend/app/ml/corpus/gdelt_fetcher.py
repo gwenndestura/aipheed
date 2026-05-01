@@ -224,11 +224,13 @@ def _parse_gdelt_article(item: dict) -> dict | None:
     if not url:
         return None
 
-    # Extract domain first — _is_credible() expects a bare domain ("pna.gov.ph"),
-    # NOT a full URL ("https://pna.gov.ph/articles/...").
-    domain = item.get("domain") or (url.split("/")[2] if "//" in url else url)
-    if not _is_credible(domain):
+    # _is_credible() uses urlparse internally and expects a full URL,
+    # NOT a bare domain string.
+    if not _is_credible(url):
         return None
+
+    # Extract bare domain for the record (after credibility check passes).
+    domain = item.get("domain") or (url.split("/")[2] if "//" in url else url)
 
     title = (item.get("title") or "").strip()
     if not title:

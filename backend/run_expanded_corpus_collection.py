@@ -317,8 +317,8 @@ def main() -> None:
     parser.add_argument("--end", default="2025-12-31")
     parser.add_argument(
         "--sources", nargs="+",
-        choices=["gnews_rss", "rss", "gdelt", "newsdata", "google_cse"],
-        default=["gnews_rss", "rss", "gdelt", "newsdata", "google_cse"],
+        choices=["gnews_rss", "rss", "newsdata", "gdelt"],
+        default=["gnews_rss", "rss", "newsdata", "gdelt"],
         help="Which fetchers to run (default: all)",
     )
     parser.add_argument("--no-classify", action="store_true",
@@ -352,7 +352,7 @@ def main() -> None:
             if cached is not None:
                 all_new += cached
             else:
-                logger.info("[1/5] Google News RSS fetcher...")
+                logger.info("[1/4] Google News RSS fetcher...")
                 from app.ml.corpus.gnews_rss_fetcher import fetch_gnews_rss_articles
                 gnews = fetch_gnews_rss_articles(start_date, end_date)
                 for r in gnews:
@@ -372,7 +372,7 @@ def main() -> None:
             if cached is not None:
                 all_new += cached
             else:
-                logger.info("[2/5] Direct RSS feeds (near-real-time top-up)...")
+                logger.info("[2/4] Direct RSS feeds (near-real-time top-up)...")
                 from app.ml.corpus.rss_fetcher import fetch_rss_articles, FEED_URLS
                 rss = fetch_rss_articles(FEED_URLS, start_date, end_date)
                 for r in rss:
@@ -382,28 +382,13 @@ def main() -> None:
                 logger.info("  RSS: %d articles", len(rss))
                 all_new += rss
 
-        # ── 3. GDELT Project ──────────────────────────────────────────────
-        if "gdelt" in args.sources:
-            cached = _load_checkpoint("gdelt") if args.resume else None
-            if cached is not None:
-                all_new += cached
-            else:
-                logger.info("[3/5] GDELT Project fetcher...")
-                from app.ml.corpus.gdelt_fetcher import fetch_gdelt_articles
-                gdelt = fetch_gdelt_articles(start_date, end_date)
-                for r in gdelt:
-                    r.setdefault("fetcher_source", "gdelt")
-                _save_checkpoint("gdelt", gdelt)
-                logger.info("  GDELT: %d articles", len(gdelt))
-                all_new += gdelt
-
-        # ── 4. NewsData.io ────────────────────────────────────────────────
+        # ── 3. NewsData.io ────────────────────────────────────────────────
         if "newsdata" in args.sources:
             cached = _load_checkpoint("newsdata") if args.resume else None
             if cached is not None:
                 all_new += cached
             else:
-                logger.info("[4/5] NewsData.io fetcher...")
+                logger.info("[3/4] NewsData.io fetcher...")
                 from app.ml.corpus.newsdata_fetcher import fetch_newsdata_articles
                 newsdata = fetch_newsdata_articles(start_date, end_date)
                 for r in newsdata:
@@ -412,20 +397,20 @@ def main() -> None:
                 logger.info("  NewsData.io: %d articles", len(newsdata))
                 all_new += newsdata
 
-        # ── 5. Google Custom Search ───────────────────────────────────────
-        if "google_cse" in args.sources:
-            cached = _load_checkpoint("google_cse") if args.resume else None
+        # ── 4. GDELT Project (last — slowest, ~40-60 min) ─────────────────
+        if "gdelt" in args.sources:
+            cached = _load_checkpoint("gdelt") if args.resume else None
             if cached is not None:
                 all_new += cached
             else:
-                logger.info("[5/5] Google Custom Search fetcher...")
-                from app.ml.corpus.google_cse_fetcher import fetch_google_cse_articles
-                gcse = fetch_google_cse_articles(start_date, end_date)
-                for r in gcse:
-                    r.setdefault("fetcher_source", "google_cse")
-                _save_checkpoint("google_cse", gcse)
-                logger.info("  Google CSE: %d articles", len(gcse))
-                all_new += gcse
+                logger.info("[4/4] GDELT Project fetcher (this takes ~40-60 min)...")
+                from app.ml.corpus.gdelt_fetcher import fetch_gdelt_articles
+                gdelt = fetch_gdelt_articles(start_date, end_date)
+                for r in gdelt:
+                    r.setdefault("fetcher_source", "gdelt")
+                _save_checkpoint("gdelt", gdelt)
+                logger.info("  GDELT: %d articles", len(gdelt))
+                all_new += gdelt
        
         
         # ── Dedup within new batch ────────────────────────────────────────
