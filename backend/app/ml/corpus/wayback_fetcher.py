@@ -26,7 +26,9 @@ from urllib.robotparser import RobotFileParser
 import requests
 
 from app.ml.corpus.rss_fetcher import (
-    CALABARZON_KEYWORDS,
+    CALABARZON_FOOD_SIGNALS,
+    CALABARZON_GEO_SIGNALS,
+    CALABARZON_KEYWORDS,  # kept for any external use
     CREDIBLE_DOMAINS,
 )
 
@@ -237,7 +239,9 @@ def _fetch_snapshot_metadata(original_url: str, timestamp: str) -> dict | None:
 
 def _matches_keywords(title: str, summary: str) -> bool:
     combined = (title + " " + summary).lower()
-    return any(kw in combined for kw in CALABARZON_KEYWORDS)
+    has_geo = any(kw in combined for kw in CALABARZON_GEO_SIGNALS)
+    has_food = any(kw in combined for kw in CALABARZON_FOOD_SIGNALS)
+    return has_geo and has_food
 
 
 # ---------------------------------------------------------------------------

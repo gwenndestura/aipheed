@@ -30,7 +30,7 @@ logger = logging.getLogger(__name__)
 
 CREDIBLE_DOMAINS: frozenset[str] = frozenset(
     {
-        # National broadsheets
+        # ── National broadsheets ──────────────────────────────────────────
         "inquirer.net",
         "newsinfo.inquirer.net",
         "business.inquirer.net",
@@ -40,14 +40,42 @@ CREDIBLE_DOMAINS: frozenset[str] = frozenset(
         "mb.com.ph",
         "philstar.com",
         "manilatimes.net",
-        # Digital-native
+        # ── Digital-native / broadcast ────────────────────────────────────
         "rappler.com",
         "sunstar.com.ph",
-        # State broadcaster
+        "gmanetwork.com",
+        "news.gmanetwork.com",
+        "news.abs-cbn.com",
+        "abs-cbn.com",
+        "cnnphilippines.com",
+        "onenews.ph",
+        "interaksyon.com",
+        "one.com.ph",
+        # ── State broadcaster & wire ──────────────────────────────────────
         "ptvnews.ph",
-        # Business press
+        "pna.gov.ph",           # Philippine News Agency (state wire)
+        "pia.gov.ph",           # Philippine Information Agency (regional gov news)
+        # ── Business press ────────────────────────────────────────────────
         "businessmirror.com.ph",
         "bworldonline.com",
+        # ── Government agencies — authoritative food/agri data sources ────
+        "da.gov.ph",            # Department of Agriculture
+        "dswd.gov.ph",          # Dept. of Social Welfare and Development
+        "nfa.gov.ph",           # National Food Authority
+        "psa.gov.ph",           # Philippine Statistics Authority
+        "neda.gov.ph",          # National Economic Development Authority
+        "doh.gov.ph",           # Dept. of Health (nutrition/malnutrition)
+        "bfar.da.gov.ph",       # Bureau of Fisheries and Aquatic Resources
+        "nmis.gov.ph",          # National Meat Inspection Service
+        "bar.gov.ph",           # Bureau of Agricultural Research
+        "openstat.psa.gov.ph",
+        # ── Regional CALABARZON government news ──────────────────────────
+        "calabarzon.da.gov.ph",
+        "ro4a.dswd.gov.ph",
+        # ── Academic / research ───────────────────────────────────────────
+        "uplb.edu.ph",
+        "fnri.dost.gov.ph",     # Food & Nutrition Research Institute
+        "dost.gov.ph",
     }
 )
 
@@ -79,123 +107,135 @@ FEED_URLS: list[str] = [
 ]
 
 # ---------------------------------------------------------------------------
-# CALABARZON food-related keyword filter
+# CALABARZON food-related keyword filter — TWO-SIGNAL DESIGN
+#
+# An article must match BOTH a geo signal AND a food signal.
+# Requiring only one signal was the root cause of false positives:
+# "philippines" alone matches every PH article; "climate" alone matches
+# weather news; "trabaho" alone matches any employment story.
 # ---------------------------------------------------------------------------
 
-CALABARZON_KEYWORDS: frozenset[str] = frozenset(
-    {
-        # Region / province names
-        "calabarzon", "batangas", "cavite", "laguna", "quezon", "rizal",
-        "region iv-a", "region 4a", "region iva",
-        "batangueño", "caviteño", "laguneño",
+# Signal A — CALABARZON geographic anchor
+# An article must reference the region or a specific province/city within it.
+CALABARZON_GEO_SIGNALS: frozenset[str] = frozenset({
+    # Region identifiers
+    "calabarzon", "region iv-a", "region iva", "region 4a",
+    # Province names (batangas/cavite/laguna are unambiguous in PH news)
+    "batangas", "cavite", "laguna",
+    # Quezon and Rizal are ambiguous (Quezon City / José Rizal) so require
+    # the "province" qualifier OR a specific LGU name from those provinces
+    "quezon province", "province of quezon",
+    "rizal province", "province of rizal",
+    # Regional government identifiers
+    "da-calabarzon", "dswd calabarzon", "dswd-calabarzon",
+    "ro iv-a", "nfa iv-a", "psa-calabarzon",
+    # Batangas LGUs
+    "batangas city", "lipa city", "tanauan", "santo tomas batangas",
+    "nasugbu", "lemery", "balayan", "bauan batangas", "mabini batangas",
+    "tingloy",
+    # Cavite LGUs
+    "bacoor", "dasmariñas", "dasmarinas", "general trias", "tagaytay",
+    "imus city", "trece martires", "silang cavite", "kawit cavite", "tanza",
+    # Laguna LGUs
+    "calamba city", "santa rosa laguna", "biñan city", "binan city",
+    "san pablo city laguna", "cabuyao city", "san pedro laguna",
+    "los baños", "los banos", "pagsanjan", "bay laguna",
+    # Quezon Province LGUs (explicitly disambiguate from Quezon City)
+    "lucena city", "tayabas city", "sariaya", "gumaca quezon",
+    "infanta quezon", "real quezon", "lopez quezon", "lucban quezon",
+    # Rizal Province LGUs (explicitly disambiguate from José Rizal)
+    "antipolo city", "cainta rizal", "taytay rizal", "angono rizal",
+    "binangonan rizal", "tanay rizal", "morong rizal", "rodriguez rizal",
+    # CALABARZON water bodies (food supply proxies: fish kill, irrigation)
+    "taal lake", "taal volcano",
+    "laguna lake", "laguna de bay",
+})
 
-        # Food security / prices (core)
-        "food price", "food insecurity", "food security", "food shortage",
-        "presyo", "pagkain", "bigas", "rice price", "rice supply",
-        "food inflation", "food cpi", "cpi", "inflation",
-        "palengke", "grocery", "market price", "price hike", "price increase",
-        "mahal", "mura", "taas ng presyo", "pagmamahal ng bilihin",
-        "bilihin", "produkto", "suplay", "kakulangan ng pagkain",
-        "seguridad sa pagkain", "kakulangan", "kakapusan",
-        "pagkukulang", "hindi sapat na pagkain", "walang makain",
+# Signal B — food insecurity topic anchor.
+# These terms are safe as sole food signals because they are ALWAYS combined
+# with a geo signal (Signal A).  A term like "rice" or "inflation" alone
+# would be too broad globally, but "Batangas + rice" or "Laguna + inflation"
+# is almost always a food-relevant story in Philippine news.
+CALABARZON_FOOD_SIGNALS: frozenset[str] = frozenset({
+    # ── Core food insecurity ─────────────────────────────────────────────
+    "food insecurity", "food insecure",
+    "food security",
+    "food shortage", "food crisis", "food scarcity",
+    "food prices", "food price",
+    "food inflation",
+    "food relief", "food assistance", "food aid",
+    "food distribution", "food pack", "food packs",
+    "food supply", "food production",
+    # ── Rice / staples ───────────────────────────────────────────────────
+    "rice",         # staple — safe with geo gate (Batangas + rice = rice supply/price story)
+    "rice price", "rice prices", "rice supply", "rice shortage",
+    "rice crisis", "rice distribution", "nfa rice", "kadiwa",
+    "palay",        # unhusked rice — strongly agricultural
+    "bigas",        # Filipino: rice (grain)
+    "presyo ng bigas", "presyo ng pagkain", "presyo ng gulay",
+    "presyo ng isda",
+    "pagkain",      # Filipino: food
+    "kakulangan ng pagkain",
+    # ── Hunger and malnutrition ──────────────────────────────────────────
+    "hunger", "hungry", "gutom",
+    "malnutrition", "malnutrisyon",
+    "stunting", "wasting", "underweight",
+    "malnourished", "undernourished", "undernutrition",
+    "feeding program", "supplementary feeding", "therapeutic feeding",
+    "batang gutom", "nagugutom", "pagkagutom",
+    "gutom na gutom", "walang makain", "wala nang makain",
+    # ── Agricultural production and damage ───────────────────────────────
+    "crop",         # safe with geo gate
+    "crops",
+    "harvest",      # safe with geo gate
+    "ani",          # Filipino: harvest
+    "crop damage", "crop loss", "crop failure",
+    "harvest damage", "harvest loss", "damaged crops",
+    "pinsala sa ani", "nasira ang ani", "nawasak na pananim",
+    "agricultural damage", "agri damage",
+    "farm", "farming",
+    # ── Farmer / fisherfolk livelihoods (food production actors) ─────────
+    "farmer", "farmers",
+    "fisherfolk", "fisherfolks",
+    "fishermen", "fisherman",
+    "magsasaka",    # Filipino: farmer
+    "mangingisda",  # Filipino: fisherman
+    "farmgate price", "farmgate",
+    # ── Aquatic / fisheries disruption ───────────────────────────────────
+    "fish kill", "fish kills", "red tide", "algal bloom",
+    "fishing ban",
+    # ── Government food programs (Philippines-specific) ───────────────────
+    "4ps", "pantawid",
+    "relief goods",
+    "conditional cash transfer",
+    "rice subsidy", "subsidized rice",
+    "food voucher", "community pantry",
+    "kadiwa ng pangulo",
+    "ayuda pagkain", "libreng bigas", "libreng pagkain",
+    "ayuda sa pagkain",
+    # ── Commodity prices ─────────────────────────────────────────────────
+    "inflation",    # safe with geo gate (CALABARZON inflation = CPI/food prices)
+    "presyo ng",    # Filipino: "price of"
+    "vegetable prices", "fish prices", "pork prices", "chicken prices",
+    "egg prices", "onion prices", "onion shortage", "onion crisis",
+    "sugar shortage", "sugar prices", "sugar crisis",
+    "cooking oil prices",
+    "fertilizer prices", "fertilizer",
+    # ── Food expenditure / access ─────────────────────────────────────────
+    "food expenditure", "food access", "food affordability",
+    "poverty incidence",
+    # ── Climate × agriculture (compound food phrases) ─────────────────────
+    "typhoon crop", "typhoon harvest", "typhoon damage crop",
+    "flood crop", "baha ani", "baha pagkain",
+    "drought rice", "drought crop",
+    "el nino crop", "el nino harvest", "el nino rice",
+    "tagtuyot ani",
+    # ── OFW food impact ───────────────────────────────────────────────────
+    "ofw remittance food", "ofw food",
+})
 
-        # Agriculture / supply chain
-        "harvest", "ani", "crop", "pananim", "palay", "mais",
-        "vegetable", "gulay", "isda", "fish", "meat", "agriculture",
-        "supply chain", "import", "smuggling", "hoarding", "food",
-        "farmgate", "postharvest", "post-harvest", "crop damage", "crop loss",
-        "animal feed", "fertilizer", "farm input", "abono",
-        "karne", "baboy", "manok", "itlog", "gatas", "prutas",
-        "kamatis", "sibuyas", "bawang", "luya", "sili",
-        "mangga", "saging", "niyog", "kamoteng kahoy",
-        "pagaani", "magsasaka", "bukid", "taniman", "sakahan",
-        "patubig", "irigasyon", "punla", "binhi", "pesticide",
-        "insecticide", "herbicide", "kemikal", "suot",
-        "nagtatanim", "nag-aani", "pagkasira ng ani",
-        "smuggled rice", "smuggled goods", "nakaw na bigas",
-
-        # Market shocks — Carneiro et al. (2025)
-        "market shock", "commodity price", "price spike", "price surge",
-        "price volatility", "fuel price", "transport cost", "logistics cost",
-        "supply disruption", "trade restriction", "export ban",
-        "price control", "price ceiling", "price monitoring",
-        "presyo ng gasolina", "presyo ng langis", "singil sa kuryente",
-        "kuryente", "tubig", "bayarin", "gastos", "pagtaas ng gastos",
-        "dagdag na bayad", "karagdagang singil",
-        "kakulangan ng suplay", "walang suplay",
-
-        # Economic / poverty
-        "poverty", "hunger", "gutom", "malnutrition",
-        "unemployment", "livelihood", "trabaho", "economy",
-        "purchasing power", "household income", "subsistence",
-        "food expenditure", "food access", "food affordability",
-        "kahirapan", "hirap", "mahirap", "salat", "destitute",
-        "walang trabaho", "naghihirap", "nagugutom", "pagkagutom",
-        "malnutrisyon", "malnutrition", "undernutrition",
-        "gutom na gutom", "pagkain ng isang beses",
-        "iisang kain", "preskwela", "batang gutom",
-        "pababa ng kita", "nawalan ng trabaho", "tanggal sa trabaho",
-        "sahod", "sweldo", "minimum wage", "sahod na buwanang",
-
-        # Climate triggers — Valentin et al. (2024)
-        "bagyo", "baha", "tagtuyot", "typhoon", "flood", "drought",
-        "el niño", "el nino", "la niña", "la nina",
-        "storm surge", "landslide", "erosion", "crop failure",
-        "rainfall", "dry spell", "water shortage", "irrigation",
-        "climate", "weather", "calamity", "sakuna", "kalamidad",
-        "pagbabago ng klima", "klimang nagbabago", "tag-ulan",
-        "tag-init", "init", "ulan", "bagyo", "lindol", "pagguho",
-        "pagbaha", "pagpapalakas ng ulan", "malakas na hangin",
-        "signal number", "signal no", "lumikas", "evacuation",
-        "naapektuhan", "nasalanta", "binaha", "naanod",
-        "pagkawasak", "nasira ang ani", "nawasak na pananim",
-
-        # Employment / remittance triggers
-        "ofw", "remittance", "layoff", "retrenchment", "job loss",
-        "overseas worker", "migrant worker", "minimum wage",
-        "padala", "pera mula abroad", "overseas filipino",
-        "nawalan ng trabaho", "tanggal sa trabaho", "retrenchment",
-        "manggagawa", "empleyado", "kawani", "contractual",
-        "endo", "no work no pay", "walang pasok",
-
-        # Conflict / governance — Balashankar et al. (2023)
-        "conflict", "unrest", "displacement", "evacuation", "relief",
-        "humanitarian", "aid", "ayuda", "relief goods", "food aid",
-        "food distribution", "food assistance", "feeding program",
-        "tulong", "libreng pagkain", "libreng bigas", "ayuda sa pagkain",
-        "food pack", "food packs", "relief pack", "relief packs",
-        "pamimigay ng pagkain", "distribusyon ng pagkain",
-        "libreng almusal", "libreng tanghalian",
-
-        # Latent risk signals — HungerGist (2023)
-        "stunting", "wasting", "underweight", "iodine", "anemia",
-        "fnri", "nutrition", "nutrisyon", "supplementary feeding",
-        "4ps", "pantawid", "conditional cash transfer", "cct",
-        "dswd", "da ", "department of agriculture", "nfa",
-        "national food authority", "da-calabarzon",
-        "pagstunting", "malnourished na bata", "batang hindi lumalaki",
-        "kulang sa sustansya", "sustansya", "bitamina", "mineral",
-        "supplemento", "lugaw", "arroz caldo", "lugaw program",
-
-        # Spatial bias / rural coverage — Valentin et al. (2024)
-        "rural", "municipality", "barangay", "lgu", "town",
-        "provincial", "farmers", "magsasaka", "fisherfolk", "mangingisda",
-        "probinsya", "munisipyo", "bayan", "nayon", "baryo",
-        "lalawigan", "lungsod", "kabayanan", "komunidad",
-        "liblib na lugar", "malalayong lugar", "mahirap abutin",
-
-        # Real-time crisis signals — FAO Data Lab (2025)
-        "food crisis", "crisis", "krisis", "shortage", "scarcity",
-        "kakulangan", "presyon", "sitwasyon",
-        "lumalala", "lumala", "lumalalang sitwasyon",
-        "pabigat", "nagpapalala", "patuloy na pagtaas",
-        "hindi na kayang bilhin", "hindi na afford",
-        "wala nang makain", "hinahanap ang pagkain",
-
-        # General Philippine relevance
-        "philippines", "pilipinas",
-    }
-)
+# Backwards-compatible alias used by wayback_fetcher.py
+CALABARZON_KEYWORDS: frozenset[str] = CALABARZON_GEO_SIGNALS | CALABARZON_FOOD_SIGNALS
 
 
 def _extract_domain(url: str) -> str:
@@ -238,13 +278,17 @@ def _parse_published(entry: feedparser.FeedParserDict) -> datetime | None:
 
 def _matches_keywords(entry: feedparser.FeedParserDict) -> bool:
     """
-    Return True if the article title or summary contains at least one
-    CALABARZON food-related keyword (case-insensitive).
+    Return True only when the article has BOTH a CALABARZON geo signal AND
+    a food insecurity signal.  Requiring both prevents false positives from
+    generic terms like 'philippines', 'climate', or 'trabaho' that previously
+    allowed basketball, politics, and tourism articles through.
     """
     title = getattr(entry, "title", "") or ""
     summary = getattr(entry, "summary", "") or ""
     combined = (title + " " + summary).lower()
-    return any(kw in combined for kw in CALABARZON_KEYWORDS)
+    has_geo = any(kw in combined for kw in CALABARZON_GEO_SIGNALS)
+    has_food = any(kw in combined for kw in CALABARZON_FOOD_SIGNALS)
+    return has_geo and has_food
 
 
 def fetch_rss_articles(

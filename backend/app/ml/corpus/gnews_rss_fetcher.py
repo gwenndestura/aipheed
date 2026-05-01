@@ -45,7 +45,7 @@ from urllib.parse import quote, urlparse
 
 import feedparser
 
-from app.ml.corpus.rss_fetcher import CREDIBLE_DOMAINS
+from app.ml.corpus.rss_fetcher import CALABARZON_FOOD_SIGNALS, CREDIBLE_DOMAINS
 
 logger = logging.getLogger(__name__)
 
@@ -783,7 +783,7 @@ def _build_url(query: str, after: str, before: str) -> str:
 def _parse_entry(entry) -> dict | None:
     """
     Extract a clean record from a feedparser entry.
-    Returns None if source domain is not credible.
+    Returns None if source domain is not credible or title lacks a food signal.
     """
     source_href: str = entry.get("source", {}).get("href", "")
     if not source_href or not _is_credible(source_href):
@@ -793,6 +793,15 @@ def _parse_entry(entry) -> dict | None:
     # Strip publisher suffix added by Google News: "Title - Publisher"
     if " - " in title:
         title = title.rsplit(" - ", 1)[0].strip()
+
+    # Reject articles whose title contains no food insecurity signal.
+    # Google News sometimes returns tangentially related results for targeted
+    # food queries (e.g. a query for "rice prices Philippines" returns a
+    # restaurant review that mentions rice).  Checking the title here is
+    # cheap and eliminates the most obvious false positives before storage.
+    title_lower = title.lower()
+    if not any(kw in title_lower for kw in CALABARZON_FOOD_SIGNALS):
+        return None
 
     link: str = entry.get("link", "") or ""
     article_id: str = entry.get("id", link)  # stable Google News article ID
