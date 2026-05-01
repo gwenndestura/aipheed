@@ -52,7 +52,12 @@ from urllib.parse import urlencode
 
 import requests
 
-from app.ml.corpus.rss_fetcher import CALABARZON_FOOD_SIGNALS, CREDIBLE_DOMAINS, _is_credible
+from app.ml.corpus.rss_fetcher import (
+    CALABARZON_FOOD_SIGNALS,
+    CALABARZON_GEO_SIGNALS,
+    CREDIBLE_DOMAINS,
+    _is_credible,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -246,8 +251,10 @@ def _parse_item(item: dict) -> dict | None:
 
     snippet = (item.get("snippet") or "").strip()
 
-    # Reject articles with no food insecurity signal in title or snippet.
+    # Reject articles missing either a CALABARZON geo signal or a food signal.
     combined = (title + " " + snippet).lower()
+    if not any(kw in combined for kw in CALABARZON_GEO_SIGNALS):
+        return None
     if not any(kw in combined for kw in CALABARZON_FOOD_SIGNALS):
         return None
     article_id = hashlib.md5(link.encode()).hexdigest()

@@ -3,12 +3,13 @@ app/ml/training/evaluator.py
 ------------------------------
 Four-baseline benchmark on walk-forward folds.
 
-Baselines evaluated on the SAME walk-forward CV folds as the LightGBM trainer:
+Baselines evaluated on the SAME walk-forward CV folds as the LightGBM trainer,
+including the same forecast_gap so the comparison is fair:
 
-  1. Naive Persistence  : predict(t+1) = label(t) for each province
+  1. Naive Persistence  : predict(t+k) = label(t) for each province
   2. PSA-Only Logistic  : LogisticRegression on economic/climate features only
   3. NLP-Only Logistic  : LogisticRegression on FSSI + 5-trigger features only
-  4. Full-Feature Logistic: LogisticRegression on all 32 features (no pct_total_hunger)
+  4. Full-Feature Logistic: LogisticRegression on all 31 features (no pct_total_hunger)
 
 Metrics per fold and aggregated:
   - Weighted F1, ROC-AUC, Accuracy, Precision (weighted), Recall (weighted)
@@ -39,6 +40,8 @@ from sklearn.metrics import (
     classification_report,
     confusion_matrix,
     f1_score,
+    precision_score,
+    recall_score,
     roc_auc_score,
 )
 from sklearn.pipeline import Pipeline
@@ -89,8 +92,8 @@ LABEL_COL: str = "label_fies"
 # ---------------------------------------------------------------------------
 
 FEATURES_PATH = Path("data/processed/features_fused.parquet")
-LABELS_PATH = Path("data/processed/labels.parquet")
-OUTPUT_PATH = Path("data/processed/eval_results.json")
+LABELS_PATH   = Path("data/processed/labels.parquet")
+OUTPUT_PATH   = Path("data/processed/eval_results.json")
 
 
 # ---------------------------------------------------------------------------
@@ -103,11 +106,11 @@ def _load_merged(
 ) -> pd.DataFrame:
     """Merge features and labels on (province_code, quarter)."""
     feat_df = pd.read_parquet(features_path)
-    lab_df = pd.read_parquet(labels_path)[
+    lab_df  = pd.read_parquet(labels_path)[
         ["province_code", "quarter", LABEL_COL]
     ]
     df = feat_df.merge(lab_df, on=["province_code", "quarter"], how="inner")
-    df = df.sort_values(["province_code", "quarter"]).reset_index(drop=True)
+    df = df.sort_values(["quarter", "province_code"]).reset_index(drop=True)
 
     logger.info(
         "_load_merged: %d rows | %d feature cols | label dist: %s",
@@ -122,17 +125,11 @@ def _build_pipeline(feature_cols: list[str]) -> Pipeline:
     Build a sklearn Pipeline for logistic regression.
 
     Numeric features are standardized; province_code is one-hot encoded.
-    Province code is prepended to the pipeline automatically.
     """
-    numeric_transformer = StandardScaler()
-    categorical_transformer = OneHotEncoder(
-        handle_unknown="ignore", sparse_output=False
-    )
-
     preprocessor = ColumnTransformer(
         transformers=[
-            ("num", numeric_transformer, feature_cols),
-            ("cat", categorical_transformer, [PROVINCE_COL]),
+            ("num", StandardScaler(), feature_cols),
+            ("cat", OneHotEncoder(handle_unknown="ignore", sparse_output=False), [PROVINCE_COL]),
         ]
     )
 
@@ -184,18 +181,18 @@ def _logistic_fold(
 
     Returns (y_pred, y_prob_positive).
     """
-    # Validate all feature cols exist
     available = set(train_df.columns)
     cols = [c for c in feature_cols if c in available]
     if len(cols) < len(feature_cols):
-        missing = set(feature_cols) - available
-        logger.warning("Missing feature columns (will skip): %s", missing)
+        logger.warning(
+            "Missing feature columns (skipped): %s", set(feature_cols) - available
+        )
 
     pipe = _build_pipeline(cols)
 
     X_train = train_df[cols + [PROVINCE_COL]]
     y_train = train_df[LABEL_COL]
-    X_test = test_df[cols + [PROVINCE_COL]]
+    X_test  = test_df[cols + [PROVINCE_COL]]
 
     pipe.fit(X_train, y_train)
     y_pred = pipe.predict(X_test)
@@ -216,34 +213,32 @@ def _compute_metrics(
     """Compute a standardized metrics dict for one fold or aggregate."""
     metrics: dict = {}
 
-    metrics["accuracy"] = float(accuracy_score(y_true, y_pred))
+    metrics["accuracy"]    = float(accuracy_score(y_true, y_pred))
     metrics["weighted_f1"] = float(f1_score(y_true, y_pred, average="weighted", zero_division=0))
-    metrics["precision"] = float(f1_score(y_true, y_pred, average="weighted",
-                                           labels=[1], zero_division=0))
+    metrics["precision"]   = float(precision_score(y_true, y_pred, average="weighted", zero_division=0))
+    metrics["recall"]      = float(recall_score(y_true, y_pred, average="weighted", zero_division=0))
 
     try:
         metrics["roc_auc"] = float(roc_auc_score(y_true, y_prob))
     except ValueError:
-        # Only one class in fold
         metrics["roc_auc"] = float("nan")
 
-    report = classification_report(y_true, y_pred, output_dict=True, zero_division=0)
-    metrics["classification_report"] = report
-
-    cm = confusion_matrix(y_true, y_pred, labels=[0, 1])
-    metrics["confusion_matrix"] = cm.tolist()
+    metrics["classification_report"] = classification_report(
+        y_true, y_pred, output_dict=True, zero_division=0
+    )
+    metrics["confusion_matrix"] = confusion_matrix(y_true, y_pred, labels=[0, 1]).tolist()
 
     return metrics
 
 
 def _aggregate_fold_metrics(fold_metrics: list[dict]) -> dict:
     """Compute mean ± std across folds for scalar metrics."""
-    scalar_keys = ["accuracy", "weighted_f1", "roc_auc"]
+    scalar_keys = ["accuracy", "weighted_f1", "precision", "recall", "roc_auc"]
     agg: dict = {}
     for key in scalar_keys:
         vals = [m[key] for m in fold_metrics if not np.isnan(m[key])]
         agg[f"{key}_mean"] = float(np.mean(vals)) if vals else float("nan")
-        agg[f"{key}_std"] = float(np.std(vals)) if vals else float("nan")
+        agg[f"{key}_std"]  = float(np.std(vals))  if vals else float("nan")
     return agg
 
 
@@ -256,9 +251,13 @@ def run_baseline_evaluation(
     labels_path: Path = LABELS_PATH,
     output_path: Path = OUTPUT_PATH,
     min_train_quarters: int = 8,
+    forecast_gap: int = 3,
 ) -> dict:
     """
     Run 4-baseline evaluation on walk-forward CV folds.
+
+    Uses the same forecast_gap as the LightGBM trainer so the comparison is fair —
+    all baselines predict the same number of quarters ahead under the same gap constraint.
 
     Returns the full results dict (also saved to output_path).
 
@@ -268,30 +267,36 @@ def run_baseline_evaluation(
     labels_path       : path to labels.parquet
     output_path       : where to save eval_results.json
     min_train_quarters: minimum quarters in first training fold (default 8 = 2 years)
+    forecast_gap      : quarters between end of training and test quarter (default 3)
     """
     df = _load_merged(features_path, labels_path)
-    splitter = WalkForwardSplitter(min_train_quarters=min_train_quarters)
+    splitter = WalkForwardSplitter(
+        min_train_quarters=min_train_quarters,
+        forecast_gap=forecast_gap,
+    )
 
     baselines = {
-        "naive_persistence": {"feature_cols": None, "type": "naive"},
-        "psa_only_logistic": {"feature_cols": PSA_FEATURES, "type": "logistic"},
-        "nlp_only_logistic": {"feature_cols": NLP_FEATURES, "type": "logistic"},
+        "naive_persistence":     {"feature_cols": None,         "type": "naive"},
+        "psa_only_logistic":     {"feature_cols": PSA_FEATURES, "type": "logistic"},
+        "nlp_only_logistic":     {"feature_cols": NLP_FEATURES, "type": "logistic"},
         "full_feature_logistic": {"feature_cols": ALL_FEATURES, "type": "logistic"},
     }
 
-    # Accumulators
     fold_results: dict[str, list[dict]] = {name: [] for name in baselines}
-    all_y_true: dict[str, list] = {name: [] for name in baselines}
-    all_y_pred: dict[str, list] = {name: [] for name in baselines}
-    all_y_prob: dict[str, list] = {name: [] for name in baselines}
+    all_y_true:  dict[str, list]        = {name: [] for name in baselines}
+    all_y_pred:  dict[str, list]        = {name: [] for name in baselines}
+    all_y_prob:  dict[str, list]        = {name: [] for name in baselines}
 
     n_folds = splitter.get_n_splits(df)
-    logger.info("Starting evaluation: %d folds, %d baselines", n_folds, len(baselines))
+    logger.info(
+        "Starting evaluation: %d folds, %d baselines, gap=%d quarters",
+        n_folds, len(baselines), forecast_gap,
+    )
 
     for fold_idx, (train_idx, test_idx) in enumerate(splitter.split(df)):
-        train_df = df.loc[train_idx]
-        test_df = df.loc[test_idx]
-        y_true = test_df[LABEL_COL].values
+        train_df     = df.loc[train_idx]
+        test_df      = df.loc[test_idx]
+        y_true       = test_df[LABEL_COL].values
         test_quarter = splitter.fold_metadata_[fold_idx]["test_quarter"]
 
         for name, cfg in baselines.items():
@@ -306,7 +311,7 @@ def run_baseline_evaluation(
                     y_prob = np.zeros(len(test_df))
 
             fold_metrics = _compute_metrics(y_true, y_pred, y_prob)
-            fold_metrics["fold"] = fold_idx
+            fold_metrics["fold"]         = fold_idx
             fold_metrics["test_quarter"] = test_quarter
             fold_results[name].append(fold_metrics)
 
@@ -317,12 +322,13 @@ def run_baseline_evaluation(
     # Build final results
     results: dict = {
         "config": {
-            "min_train_quarters": min_train_quarters,
-            "n_folds": splitter.n_folds_,
-            "n_provinces": df["province_code"].nunique(),
-            "n_quarters": df["quarter"].nunique(),
-            "label_col": LABEL_COL,
-            "label_distribution": df[LABEL_COL].value_counts().to_dict(),
+            "min_train_quarters":     min_train_quarters,
+            "forecast_gap":           forecast_gap,
+            "n_folds":                splitter.n_folds_,
+            "n_provinces":            df["province_code"].nunique(),
+            "n_quarters":             df["quarter"].nunique(),
+            "label_col":              LABEL_COL,
+            "label_distribution":     df[LABEL_COL].value_counts().to_dict(),
             "pct_total_hunger_excluded": True,
             "leakage_note": (
                 "pct_total_hunger excluded from all feature sets — "
@@ -330,15 +336,15 @@ def run_baseline_evaluation(
             ),
         },
         "feature_groups": {
-            "nlp_features": NLP_FEATURES,
-            "psa_features": PSA_FEATURES,
+            "nlp_features":       NLP_FEATURES,
+            "psa_features":       PSA_FEATURES,
             "all_features_count": len(ALL_FEATURES),
         },
         "baselines": {},
         "target_metrics": {
             "lightgbm_weighted_f1_target": 0.75,
-            "lightgbm_roc_auc_target": 0.80,
-            "note": "LightGBM results added by trainer.py (W12-2)",
+            "lightgbm_roc_auc_target":     0.80,
+            "note": "LightGBM results added by trainer.py",
         },
     }
 
@@ -347,13 +353,15 @@ def run_baseline_evaluation(
         y_pred_all = np.array(all_y_pred[name])
         y_prob_all = np.array(all_y_prob[name])
 
-        overall = _compute_metrics(y_true_all, y_pred_all, y_prob_all)
+        overall   = _compute_metrics(y_true_all, y_pred_all, y_prob_all)
         aggregate = _aggregate_fold_metrics(fold_list)
 
         results["baselines"][name] = {
-            "overall": {k: v for k, v in overall.items()
-                        if k not in ("classification_report", "confusion_matrix")},
-            "aggregate_across_folds": aggregate,
+            "overall": {
+                k: v for k, v in overall.items()
+                if k not in ("classification_report", "confusion_matrix")
+            },
+            "aggregate_across_folds":  aggregate,
             "confusion_matrix_overall": overall["confusion_matrix"],
             "fold_metrics": [
                 {k: v for k, v in fm.items()
@@ -363,13 +371,14 @@ def run_baseline_evaluation(
         }
 
         logger.info(
-            "Baseline %-25s | weighted_F1=%.3f | ROC-AUC=%.3f",
+            "Baseline %-25s | weighted_F1=%.3f | precision=%.3f | recall=%.3f | ROC-AUC=%.3f",
             name,
             overall["weighted_f1"],
+            overall["precision"],
+            overall["recall"],
             overall["roc_auc"] if not np.isnan(overall["roc_auc"]) else -1,
         )
 
-    # Save
     output_path.parent.mkdir(parents=True, exist_ok=True)
     with open(output_path, "w", encoding="utf-8") as f:
         json.dump(results, f, indent=2, default=str)

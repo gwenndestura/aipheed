@@ -40,6 +40,7 @@ from __future__ import annotations
 
 import logging
 import time
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timezone
 from urllib.parse import quote, urlparse
 
@@ -55,8 +56,12 @@ logger = logging.getLogger(__name__)
 
 GNEWS_RSS_BASE = "https://news.google.com/rss/search"
 
-# Polite delay between Google News requests (seconds)
+# Polite delay between Google News requests (seconds) — per worker thread
 GNEWS_CRAWL_DELAY = 1.0
+
+# Concurrent workers: 4 threads × 1s delay ≈ 4 req/s total
+# Reduces runtime from ~66 min to ~17 min for a 6-year collection
+GNEWS_MAX_WORKERS = 4
 
 # ---------------------------------------------------------------------------
 # 1. National food/price queries (English)
@@ -799,6 +804,12 @@ def _parse_entry(entry) -> dict | None:
     # food queries (e.g. a query for "rice prices Philippines" returns a
     # restaurant review that mentions rice).  Checking the title here is
     # cheap and eliminates the most obvious false positives before storage.
+    # Food signal check on title only.
+    # Geo is NOT checked here because Google News RSS returns title-only
+    # (summary is always empty) — the geographic anchor is already encoded in
+    # the query string (e.g. "Batangas food prices rice"), so an article titled
+    # "Rice prices surge amid harvest delays" is legitimately geo-scoped even
+    # though the place name does not appear in the title itself.
     title_lower = title.lower()
     if not any(kw in title_lower for kw in CALABARZON_FOOD_SIGNALS):
         return None
@@ -872,32 +883,35 @@ def fetch_gnews_rss_articles(
     records: list[dict] = []
     seen_ids: set[str] = set()
 
-    for after, before, year, quarter in windows:
-        quarter_count = 0
-        for query in GNEWS_RSS_QUERIES:
-            feed_url = _build_url(query, after, before)
-            try:
-                feed = feedparser.parse(feed_url)
-                time.sleep(GNEWS_CRAWL_DELAY)
-            except Exception as exc:
-                logger.debug(
-                    "Google News RSS error (%s %d-Q%d): %s",
-                    query[:30], year, quarter, exc,
-                )
-                continue
-
+    def _fetch_one(args: tuple) -> list[dict]:
+        query, after, before, year, quarter = args
+        results: list[dict] = []
+        feed_url = _build_url(query, after, before)
+        try:
+            feed = feedparser.parse(feed_url)
+            time.sleep(GNEWS_CRAWL_DELAY)
             for entry in feed.entries:
                 record = _parse_entry(entry)
-                if record is None:
-                    continue
+                if record is not None:
+                    results.append(record)
+        except Exception as exc:
+            logger.debug("Google News RSS error (%s %d-Q%d): %s", query[:30], year, quarter, exc)
+        return results
 
-                dedup_key = record["article_id"] or record["link"]
-                if dedup_key in seen_ids:
-                    continue
-                seen_ids.add(dedup_key)
+    for after, before, year, quarter in windows:
+        quarter_count = 0
+        tasks = [(q, after, before, year, quarter) for q in GNEWS_RSS_QUERIES]
 
-                records.append(record)
-                quarter_count += 1
+        with ThreadPoolExecutor(max_workers=GNEWS_MAX_WORKERS) as executor:
+            futures = [executor.submit(_fetch_one, t) for t in tasks]
+            for future in as_completed(futures):
+                for record in future.result():
+                    dedup_key = record["article_id"] or record["link"]
+                    if dedup_key in seen_ids:
+                        continue
+                    seen_ids.add(dedup_key)
+                    records.append(record)
+                    quarter_count += 1
 
         logger.info(
             "Google News RSS %d-Q%d: +%d articles (total %d)",

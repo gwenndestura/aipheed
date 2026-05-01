@@ -21,7 +21,13 @@ from urllib.parse import urlparse
 
 import requests
 
-from app.ml.corpus.rss_fetcher import CREDIBLE_DOMAINS
+import hashlib
+
+from app.ml.corpus.rss_fetcher import (
+    CALABARZON_FOOD_SIGNALS,
+    CALABARZON_GEO_SIGNALS,
+    CREDIBLE_DOMAINS,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -173,7 +179,17 @@ def fetch_gnews_articles(
                 continue
             seen_links.add(url)
 
-            # 3. Parse published date
+            title = (article.get("title") or "").strip()
+            summary = (article.get("description") or "").strip()
+
+            # 3. Two-signal filter: must have CALABARZON geo anchor + food signal
+            combined = (title + " " + summary).lower()
+            if not any(kw in combined for kw in CALABARZON_GEO_SIGNALS):
+                continue
+            if not any(kw in combined for kw in CALABARZON_FOOD_SIGNALS):
+                continue
+
+            # 4. Parse published date
             pub_str: str = article.get("publishedAt", "")
             try:
                 published_dt = datetime.fromisoformat(
@@ -187,11 +203,13 @@ def fetch_gnews_articles(
 
             records.append(
                 {
-                    "title": (article.get("title") or "").strip(),
+                    "title": title,
                     "link": url.strip(),
+                    "article_id": hashlib.md5(url.encode()).hexdigest(),
                     "published": published_iso,
-                    "summary": (article.get("description") or "").strip(),
+                    "summary": summary[:500],
                     "source_domain": source_domain,
+                    "fetcher_source": "gnews",
                 }
             )
 

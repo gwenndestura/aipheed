@@ -17,8 +17,11 @@ Feature groups and sources:
   7. Fuel            : diesel_php_per_l, brent_usd_per_bbl
   8. Climate         : tc_count, rainfall_anomaly_pct, enso_numeric, drought_alert
   9. Commodity basket: veg_price_mean, fish_price_mean, livestock_price_mean
- 10. SWS hunger      : pct_total_hunger (secondary quarterly label — feature use)
- 11. BERTopic props  : topic_N_pct columns (supplementary, if available)
+ 10. BERTopic props  : topic_N_pct columns (supplementary, if available)
+
+NOTE: pct_total_hunger (SWS) is NOT included here. The primary label label_fies is defined as
+(pct_total_hunger > cycle_median), so including it as a feature is direct label leakage.
+The label generator reads sws_hunger.parquet independently.
 
 LightGBM formula reference (Backend Guide v3):
     y_hat_p,t+3 = F(FSSI_t, FSSI_t-1, FSSI_t-2, dFSSI_t,
@@ -201,10 +204,15 @@ def _load_commodity(path: Path) -> pd.DataFrame:
 
 
 def _load_sws(path: Path) -> pd.DataFrame:
-    """Load SWS quarterly hunger (used as supplementary NLP feature, not label)."""
-    df = pd.read_parquet(path)
-    keep = ["province_code", "quarter", "pct_total_hunger"]
-    return df[[c for c in keep if c in df.columns]].copy()
+    """
+    Intentionally returns an empty DataFrame.
+
+    pct_total_hunger is the raw SWS value from which label_fies is derived
+    (label = pct_total_hunger > cycle_median). Including it as a training feature
+    constitutes perfect label leakage and will produce ~100% accuracy.
+    The label generator reads sws_hunger.parquet directly and independently.
+    """
+    return pd.DataFrame()
 
 
 def _load_ricelytics(path: Path) -> pd.DataFrame:
@@ -324,10 +332,7 @@ def build_feature_matrix(
     except Exception as exc:
         logger.warning("Commodity prices failed to load: %s", exc)
 
-    # 9. SWS hunger (supplementary)
-    df = _left_merge(df, _load_sws(sws_path), "SWS")
-
-    # 10. Ricelytics 2022-25 (gap fill)
+    # 9. Ricelytics 2022-25 (gap fill)
     try:
         rice_ext = _load_ricelytics(ricelytics_path)
         if not rice_ext.empty:
@@ -348,11 +353,11 @@ def build_feature_matrix(
     # --- Post-merge cleanup ---
 
     # Forward-fill macro series within each province (fills gaps from sparse surveys)
+    # pct_total_hunger is excluded — see module docstring.
     ff_cols = [
         "FSSI", "food_cpi", "food_cpi_yoy", "unemployment_rate", "poverty_incidence",
         "ofw_remit_yoy_pct", "fx_usd_php_avg", "diesel_php_per_l",
         "brent_usd_per_bbl", "headline_cpi", "food_minus_headline_yoy",
-        "pct_total_hunger",
     ]
     for col in ff_cols:
         if col in df.columns:

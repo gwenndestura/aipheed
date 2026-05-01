@@ -10,7 +10,6 @@ Sources
   3. NewsData.io          (newsdata_fetcher)       — NEWSDATA_API_KEY
   4. GDELT Project        (gdelt_fetcher)          — free, no API key
   5. Google Custom Search (google_cse_fetcher)     — GOOGLE_CSE_API_KEY + GOOGLE_CSE_CX
-  6. Bing News Search     (bing_news_fetcher)      — BING_NEWS_API_KEY
 
 Anthropic Classifier
 --------------------
@@ -48,7 +47,6 @@ Required .env keys (add to backend/.env)
   NEWSDATA_API_KEY=pub_xxxx
   GOOGLE_CSE_API_KEY=AIzaSy...
   GOOGLE_CSE_CX=xxxxxxxxxx
-  BING_NEWS_API_KEY=xxxxxxxx
   ANTHROPIC_API_KEY=sk-ant-...
 """
 
@@ -77,9 +75,10 @@ logger = logging.getLogger("corpus_collection")
 # Paths
 # ---------------------------------------------------------------------------
 
-RAW_PATH = Path("data/raw/corpus_raw.parquet")
-EXPANDED_PATH = Path("data/raw/corpus_raw_expanded.parquet")
-GEOCODED_PATH = Path("data/processed/corpus_geocoded.parquet")
+RAW_PATH       = Path("data/raw/corpus_raw.parquet")
+EXPANDED_PATH  = Path("data/raw/corpus_raw_expanded.parquet")
+GEOCODED_PATH  = Path("data/processed/corpus_geocoded.parquet")
+CHECKPOINT_DIR = Path("data/raw/checkpoints")
 
 # ---------------------------------------------------------------------------
 # LGU coverage report
@@ -161,15 +160,136 @@ def _lgu_coverage_report(df: pd.DataFrame) -> None:
 # Deduplication
 # ---------------------------------------------------------------------------
 
+import re as _re
+from collections import defaultdict as _defaultdict
+
+# Stop words removed before Jaccard comparison.
+# Includes common action verbs that outlets swap when republishing the same
+# PNA wire story (distributes → gives → provides → releases).
+_TITLE_STOP: frozenset[str] = frozenset({
+    # Articles / prepositions / conjunctions
+    "a", "an", "the", "and", "or", "of", "in", "on", "at", "to", "for",
+    "by", "with", "as", "its", "it", "this", "that", "their", "from",
+    "after", "before", "over", "more", "new", "up", "out", "into", "amid",
+    "due", "per", "vs",
+    # Common auxiliary verbs
+    "is", "are", "was", "were", "be", "been", "has", "have", "had",
+    # Action verbs swapped across reposts of the same story
+    "says", "say", "said",
+    "report", "reports", "reported",
+    "hit", "hits",
+    "see", "sees", "seen",
+    "get", "gets", "got",
+    "give", "gives", "gave",
+    "distribute", "distributes", "distributed",
+    "provide", "provides", "provided",
+    "issue", "issues", "issued",
+    "release", "releases", "released",
+    # Philippine boilerplate
+    "ph", "philippines", "philippine",
+})
+
+# Jaccard threshold: ≥ 0.75 word overlap → same story.
+# High enough to avoid false positives (Batangas vs Cavite articles
+# share ~71% words and are correctly kept separate), low enough to
+# catch paraphrased reposts of the same PNA wire story (~83%+ overlap).
+_JACCARD_THRESHOLD = 0.75
+
+
+def _title_wordset(title: str) -> frozenset[str]:
+    """Return content-word set for a title, excluding stop words."""
+    t = _re.sub(r"[^a-z0-9\s]", " ", title.lower())
+    return frozenset(w for w in t.split() if w not in _TITLE_STOP and len(w) > 2)
+
+
+def _jaccard(a: frozenset, b: frozenset) -> float:
+    if not a or not b:
+        return 0.0
+    return len(a & b) / len(a | b)
+
+
 def _dedup(records: list[dict]) -> list[dict]:
-    seen: set[str] = set()
+    """
+    Two-pass deduplication:
+
+    Pass 1 — Exact (URL / article_id hash)
+        Catches the same URL returned by multiple fetchers or queries.
+
+    Pass 2 — Content (Jaccard similarity on title word sets)
+        Catches the same news story republished across outlets with slightly
+        different wording (e.g. PNA wire stories on Rappler, MB, Inquirer).
+        Uses an inverted index for O(n) candidate lookup instead of O(n²)
+        brute force — fast even for 35,000+ articles.
+
+        Threshold 0.75: two titles must share ≥ 75% of their content words
+        to be considered duplicates. This prevents different-province
+        articles with similar templates from being incorrectly merged.
+    """
+    seen_ids: set[str] = set()
+    seen_wordsets: list[frozenset] = []
+    # Inverted index: word → indices into seen_wordsets
+    word_index: dict[str, list[int]] = _defaultdict(list)
     out: list[dict] = []
+
     for r in records:
+        # ── Pass 1: exact ID / URL dedup ─────────────────────────────────
         key = r.get("article_id") or hashlib.md5(r.get("link", "").encode()).hexdigest()
-        if key not in seen:
-            seen.add(key)
-            out.append(r)
+        if key in seen_ids:
+            continue
+        seen_ids.add(key)
+
+        # ── Pass 2: Jaccard title dedup ───────────────────────────────────
+        words = _title_wordset(r.get("title") or "")
+        is_dup = False
+
+        if len(words) >= 4:  # only dedup titles with ≥ 4 content words
+            # Find candidate indices via inverted index (O(|words|) lookup)
+            candidate_idxs: set[int] = set()
+            for w in words:
+                candidate_idxs.update(word_index.get(w, []))
+
+            for idx in candidate_idxs:
+                if _jaccard(words, seen_wordsets[idx]) >= _JACCARD_THRESHOLD:
+                    is_dup = True
+                    break
+
+        if is_dup:
+            continue
+
+        # Register new article in index
+        idx = len(seen_wordsets)
+        for w in words:
+            word_index[w].append(idx)
+        seen_wordsets.append(words)
+        out.append(r)
+
     return out
+
+
+def _save_checkpoint(source: str, records: list[dict]) -> None:
+    """Save a fetcher's results immediately so a Ctrl+C cannot lose them."""
+    CHECKPOINT_DIR.mkdir(parents=True, exist_ok=True)
+    path = CHECKPOINT_DIR / f"{source}.parquet"
+    pd.DataFrame(records).to_parquet(path, index=False)
+    logger.info("Checkpoint saved: %s (%d articles) → %s", source, len(records), path)
+
+
+def _load_checkpoint(source: str) -> list[dict] | None:
+    """Return saved records for a source, or None if no checkpoint exists."""
+    path = CHECKPOINT_DIR / f"{source}.parquet"
+    if path.exists():
+        records = pd.read_parquet(path).to_dict(orient="records")
+        logger.info("Resuming from checkpoint: %s (%d articles)", source, len(records))
+        return records
+    return None
+
+
+def _clear_checkpoints() -> None:
+    """Remove all checkpoint files after a successful full run."""
+    if CHECKPOINT_DIR.exists():
+        for f in CHECKPOINT_DIR.glob("*.parquet"):
+            f.unlink()
+        logger.info("Checkpoints cleared.")
 
 
 def _dedup_against_existing(new_records: list[dict], existing_df: pd.DataFrame) -> list[dict]:
@@ -197,14 +317,16 @@ def main() -> None:
     parser.add_argument("--end", default="2025-12-31")
     parser.add_argument(
         "--sources", nargs="+",
-        choices=["gnews_rss", "rss", "gdelt", "newsdata", "google_cse", "bing"],
-        default=["gnews_rss", "rss", "gdelt", "newsdata", "google_cse", "bing"],
+        choices=["gnews_rss", "rss", "gdelt", "newsdata", "google_cse"],
+        default=["gnews_rss", "rss", "gdelt", "newsdata", "google_cse"],
         help="Which fetchers to run (default: all)",
     )
     parser.add_argument("--no-classify", action="store_true",
                         help="Skip Anthropic Claude food insecurity classification")
     parser.add_argument("--classify-only", action="store_true",
                         help="Only run Claude classification on existing corpus")
+    parser.add_argument("--resume", action="store_true",
+                        help="Skip fetchers that already have a saved checkpoint")
     args = parser.parse_args()
 
     start_date = args.start
@@ -226,55 +348,86 @@ def main() -> None:
     if not args.classify_only:
         # ── 1. Google News RSS ────────────────────────────────────────────
         if "gnews_rss" in args.sources:
-            logger.info("[1/6] Google News RSS fetcher...")
-            from app.ml.corpus.gnews_rss_fetcher import fetch_gnews_rss_articles
-            gnews = fetch_gnews_rss_articles(start_date, end_date)
-            logger.info("  Google News RSS: %d articles", len(gnews))
-            all_new += gnews
+            cached = _load_checkpoint("gnews_rss") if args.resume else None
+            if cached is not None:
+                all_new += cached
+            else:
+                logger.info("[1/5] Google News RSS fetcher...")
+                from app.ml.corpus.gnews_rss_fetcher import fetch_gnews_rss_articles
+                gnews = fetch_gnews_rss_articles(start_date, end_date)
+                for r in gnews:
+                    r.setdefault("fetcher_source", "gnews_rss")
+                _save_checkpoint("gnews_rss", gnews)
+                logger.info("  Google News RSS: %d articles", len(gnews))
+                all_new += gnews
 
         # ── 2. Direct RSS feeds ───────────────────────────────────────────
+        # NOTE: RSS feeds are a live window (last 10-50 articles only).
+        # The fetcher automatically extends the upper date bound to today so
+        # current articles are captured even when end_date is in the past.
+        # For the 2020-2025 historical window, gnews_rss and gdelt are the
+        # primary sources; RSS contributes near-real-time top-up only.
         if "rss" in args.sources:
-            logger.info("[2/6] Direct RSS feeds...")
-            from app.ml.corpus.rss_fetcher import fetch_rss_articles, FEED_URLS
-            rss = fetch_rss_articles(FEED_URLS, start_date, end_date)
-            for r in rss:
-                r.setdefault("article_id", hashlib.md5(r["link"].encode()).hexdigest())
-                r.setdefault("fetcher_source", "rss")
-            logger.info("  RSS: %d articles", len(rss))
-            all_new += rss
+            cached = _load_checkpoint("rss") if args.resume else None
+            if cached is not None:
+                all_new += cached
+            else:
+                logger.info("[2/5] Direct RSS feeds (near-real-time top-up)...")
+                from app.ml.corpus.rss_fetcher import fetch_rss_articles, FEED_URLS
+                rss = fetch_rss_articles(FEED_URLS, start_date, end_date)
+                for r in rss:
+                    r.setdefault("article_id", hashlib.md5(r["link"].encode()).hexdigest())
+                    r.setdefault("fetcher_source", "rss")
+                _save_checkpoint("rss", rss)
+                logger.info("  RSS: %d articles", len(rss))
+                all_new += rss
 
         # ── 3. GDELT Project ──────────────────────────────────────────────
         if "gdelt" in args.sources:
-            logger.info("[3/6] GDELT Project fetcher...")
-            from app.ml.corpus.gdelt_fetcher import fetch_gdelt_articles
-            gdelt = fetch_gdelt_articles(start_date, end_date)
-            logger.info("  GDELT: %d articles", len(gdelt))
-            all_new += gdelt
+            cached = _load_checkpoint("gdelt") if args.resume else None
+            if cached is not None:
+                all_new += cached
+            else:
+                logger.info("[3/5] GDELT Project fetcher...")
+                from app.ml.corpus.gdelt_fetcher import fetch_gdelt_articles
+                gdelt = fetch_gdelt_articles(start_date, end_date)
+                for r in gdelt:
+                    r.setdefault("fetcher_source", "gdelt")
+                _save_checkpoint("gdelt", gdelt)
+                logger.info("  GDELT: %d articles", len(gdelt))
+                all_new += gdelt
 
         # ── 4. NewsData.io ────────────────────────────────────────────────
         if "newsdata" in args.sources:
-            logger.info("[4/6] NewsData.io fetcher...")
-            from app.ml.corpus.newsdata_fetcher import fetch_newsdata_articles
-            newsdata = fetch_newsdata_articles(start_date, end_date)
-            logger.info("  NewsData.io: %d articles", len(newsdata))
-            all_new += newsdata
+            cached = _load_checkpoint("newsdata") if args.resume else None
+            if cached is not None:
+                all_new += cached
+            else:
+                logger.info("[4/5] NewsData.io fetcher...")
+                from app.ml.corpus.newsdata_fetcher import fetch_newsdata_articles
+                newsdata = fetch_newsdata_articles(start_date, end_date)
+                for r in newsdata:
+                    r.setdefault("fetcher_source", "newsdata")
+                _save_checkpoint("newsdata", newsdata)
+                logger.info("  NewsData.io: %d articles", len(newsdata))
+                all_new += newsdata
 
         # ── 5. Google Custom Search ───────────────────────────────────────
         if "google_cse" in args.sources:
-            logger.info("[5/6] Google Custom Search fetcher...")
-            from app.ml.corpus.google_cse_fetcher import fetch_google_cse_articles
-            gcse = fetch_google_cse_articles(start_date, end_date)
-            logger.info("  Google CSE: %d articles", len(gcse))
-            all_new += gcse
-
-        # ── 6. Bing News ──────────────────────────────────────────────────
-        if "bing" in args.sources:
-            logger.info("[6/6] Bing News Search fetcher...")
-            from app.ml.corpus.bing_news_fetcher import fetch_bing_news_articles
-            bing = fetch_bing_news_articles(start_date, end_date)
-            logger.info("  Bing News: %d articles", len(bing))
-            all_new += bing
-
+            cached = _load_checkpoint("google_cse") if args.resume else None
+            if cached is not None:
+                all_new += cached
+            else:
+                logger.info("[5/5] Google Custom Search fetcher...")
+                from app.ml.corpus.google_cse_fetcher import fetch_google_cse_articles
+                gcse = fetch_google_cse_articles(start_date, end_date)
+                for r in gcse:
+                    r.setdefault("fetcher_source", "google_cse")
+                _save_checkpoint("google_cse", gcse)
+                logger.info("  Google CSE: %d articles", len(gcse))
+                all_new += gcse
+       
+        
         # ── Dedup within new batch ────────────────────────────────────────
         all_new = _dedup(all_new)
         logger.info("After dedup (new batch): %d articles", len(all_new))
@@ -352,6 +505,7 @@ def main() -> None:
 
     new_df.to_parquet(EXPANDED_PATH, index=False)
     logger.info("Saved new articles only → %s (%d articles)", EXPANDED_PATH, len(new_df))
+    _clear_checkpoints()
 
     # ── Save geocoded ─────────────────────────────────────────────────────
     GEOCODED_PATH.parent.mkdir(parents=True, exist_ok=True)

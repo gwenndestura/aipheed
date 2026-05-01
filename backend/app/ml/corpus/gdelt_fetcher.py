@@ -42,12 +42,17 @@ from __future__ import annotations
 import hashlib
 import logging
 import time
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timedelta, timezone
 from urllib.parse import quote
 
 import requests
 
-from app.ml.corpus.rss_fetcher import CALABARZON_FOOD_SIGNALS, CREDIBLE_DOMAINS, _is_credible
+from app.ml.corpus.rss_fetcher import (
+    CALABARZON_FOOD_SIGNALS,
+    CREDIBLE_DOMAINS,
+    _is_credible,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -58,6 +63,10 @@ logger = logging.getLogger(__name__)
 GDELT_DOC_BASE = "https://api.gdeltproject.org/api/v2/doc/doc"
 REQUEST_DELAY = 1.5
 MAX_RECORDS = 250
+
+# Concurrent workers: 3 threads × 1.5s delay ≈ 2 req/s total (polite to GDELT)
+# Reduces runtime from ~107 min to ~36 min for a 6-year collection
+GDELT_MAX_WORKERS = 3
 GDELT_CREDIBLE_DOMAINS = [
     "pna.gov.ph", "rappler.com", "inquirer.net", "philstar.com",
     "mb.com.ph", "manilatimes.net", "gmanetwork.com", "news.abs-cbn.com",
@@ -120,25 +129,27 @@ CALABARZON_LGUS: dict[str, list[str]] = {
 }
 
 # ---------------------------------------------------------------------------
-# Food insecurity sub-queries — appended to each LGU name
+# Food insecurity query — one combined Boolean OR query per LGU / province.
+#
+# Previously this was 14 separate sub-queries per LGU, producing:
+#   (137 LGUs + 5 provinces + 30 regional) × 14 × 25 windows ≈ 60,000 requests
+#   At 1.5 s / request ≈ 25 hours.
+#
+# GDELT supports Boolean OR in the query string, so all 14 food themes collapse
+# into a single request per LGU per window:
+#   (137 + 5 + 30) × 25 windows = 4,300 requests ≈ 1.8 hours  (14× faster)
+#
+# The terms below cover every theme the 14 original sub-queries targeted.
 # ---------------------------------------------------------------------------
 
-FOOD_SUBQUERIES: list[str] = [
-    "food prices",
-    "food insecurity",
-    "hunger malnutrition",
-    "rice supply shortage",
-    "food assistance relief",
-    "crop damage harvest",
-    "food poverty livelihood",
-    "typhoon flood food",
-    "fish kill livelihood",
-    "feeding program malnutrition",
-    "presyo pagkain gutom",
-    "food security program",
-    "rice distribution NFA",
-    "DSWD food aid",
+FOOD_COMBINED_TERMS: list[str] = [
+    "food", "hunger", "malnutrition", "rice", "relief",
+    "crop", "harvest", "poverty", "typhoon", "fish",
+    "gutom", "pagkain", "NFA", "DSWD",
 ]
+
+# Pre-built OR clause reused for every LGU / province query
+_FOOD_OR = " OR ".join(FOOD_COMBINED_TERMS)
 
 REGIONAL_QUERIES: list[str] = [
     "CALABARZON food insecurity",
@@ -212,15 +223,25 @@ def _parse_gdelt_article(item: dict) -> dict | None:
     url = item.get("url") or item.get("sourceurl") or ""
     if not url:
         return None
-    if not _is_credible(url):
+
+    # Extract domain first — _is_credible() expects a bare domain ("pna.gov.ph"),
+    # NOT a full URL ("https://pna.gov.ph/articles/...").
+    domain = item.get("domain") or (url.split("/")[2] if "//" in url else url)
+    if not _is_credible(domain):
         return None
 
     title = (item.get("title") or "").strip()
     if not title:
         return None
 
-    # Reject articles with no food insecurity signal in the title.
-    if not any(kw in title.lower() for kw in CALABARZON_FOOD_SIGNALS):
+    # Food signal check on title only.
+    # Geo is NOT checked here — GDELT returns title only (no body text), and the
+    # LGU name is already encoded in the query string (e.g. '"Batangas City"
+    # (food OR hunger OR rice OR ...)'), so an article titled "Rice prices climb
+    # ahead of planting season" is legitimately geo-scoped by the query even
+    # though the place name does not appear in the title.
+    title_lower = title.lower()
+    if not any(kw in title_lower for kw in CALABARZON_FOOD_SIGNALS):
         return None
 
     # GDELT seendate format: YYYYMMDDTHHMMSSZ
@@ -232,7 +253,6 @@ def _parse_gdelt_article(item: dict) -> dict | None:
     except Exception:
         published = seendate
 
-    domain = item.get("domain") or url.split("/")[2]
     article_id = hashlib.md5(url.encode()).hexdigest()
 
     return {
@@ -287,38 +307,46 @@ def fetch_gdelt_articles(
     records: list[dict] = []
     seen_ids: set[str] = set()
 
-    # ── Build per-LGU query list ──────────────────────────────────────────
+    # ── Build per-LGU query list (one combined query per LGU) ────────────
     lgu_queries: list[str] = []
     for province, lgus in CALABARZON_LGUS.items():
         for lgu in lgus:
-            for sub in FOOD_SUBQUERIES:
-                lgu_queries.append(f'"{lgu}" {sub}')
-        # Also pure province-level
-        for sub in FOOD_SUBQUERIES:
-            lgu_queries.append(f'"{province}" {sub}')
+            lgu_queries.append(f'"{lgu}" ({_FOOD_OR})')
+        lgu_queries.append(f'"{province}" ({_FOOD_OR})')
 
     all_queries = lgu_queries + REGIONAL_QUERIES
 
     logger.info(
-        "GDELT: %d queries x %d windows = %d requests",
+        "GDELT: %d queries x %d windows = %d requests  (~%.0f min at %.1fs delay)",
         len(all_queries), len(windows), len(all_queries) * len(windows),
+        len(all_queries) * len(windows) * REQUEST_DELAY / 60,
+        REQUEST_DELAY,
     )
+
+    def _fetch_one(args: tuple) -> list[dict]:
+        query, start_dt, end_dt = args
+        results: list[dict] = []
+        url = _build_url(query, start_dt, end_dt)
+        for item in _fetch_gdelt(url):
+            record = _parse_gdelt_article(item)
+            if record is not None:
+                results.append(record)
+        return results
 
     for start_dt, end_dt in windows:
         window_count = 0
-        for query in all_queries:
-            url = _build_url(query, start_dt, end_dt)
-            articles = _fetch_gdelt(url)
-            for item in articles:
-                record = _parse_gdelt_article(item)
-                if record is None:
-                    continue
-                key = record["article_id"]
-                if key in seen_ids:
-                    continue
-                seen_ids.add(key)
-                records.append(record)
-                window_count += 1
+        tasks = [(q, start_dt, end_dt) for q in all_queries]
+
+        with ThreadPoolExecutor(max_workers=GDELT_MAX_WORKERS) as executor:
+            futures = [executor.submit(_fetch_one, t) for t in tasks]
+            for future in as_completed(futures):
+                for record in future.result():
+                    key = record["article_id"]
+                    if key in seen_ids:
+                        continue
+                    seen_ids.add(key)
+                    records.append(record)
+                    window_count += 1
 
         logger.info(
             "GDELT window %s–%s: +%d articles (total %d)",
