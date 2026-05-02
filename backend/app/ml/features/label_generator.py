@@ -199,17 +199,25 @@ def _build_fies_labels(
 
     df = pd.DataFrame(rows)
 
-    # Global median threshold over all 120 (province, quarter) pairs
-    global_threshold = float(df["stress_score"].median())
-    df["global_threshold"] = round(global_threshold, 4)
-    df["label_fies"] = (df["stress_score"] > global_threshold).astype(int)
+    # ── PER-QUARTER REGIONAL RANK LABELING (Backend Guide v3 spec) ───────
+    # "label_p,t = 1 if FIES_p,t > regional_median(t)"
+    # With 5 provinces per quarter, the top 2 by stress_score get label=1
+    # (= above the within-quarter median of 5). This gives:
+    #   - 40% positive rate at every quarter (8 / 20 in holdout, 48 / 120 overall)
+    #   - Class diversity in any contiguous time window (CV folds, holdout)
+    #   - AUC interpretable as DSWD ranking quality: "did the model flag the
+    #     2 most-at-risk provinces this quarter?"
+    df["quarter_rank"] = df.groupby("quarter")["stress_score"].rank(
+        ascending=False, method="first"
+    )
+    df["label_fies"] = (df["quarter_rank"] <= 2).astype(int)
 
     logger.info(
         "_build_fies_labels: %d province-quarter rows | label_fies distribution: %s | "
-        "global stress threshold: %.4f | stress range [%.4f, %.4f]",
+        "labeling = per-quarter top-2 of 5 provinces (matches Backend Guide v3 spec) | "
+        "stress range [%.4f, %.4f]",
         len(df),
         df["label_fies"].value_counts().to_dict(),
-        global_threshold,
         df["stress_score"].min(),
         df["stress_score"].max(),
     )

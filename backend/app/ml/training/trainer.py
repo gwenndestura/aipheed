@@ -138,9 +138,11 @@ def _make_objective(
     Build Optuna objective using Walk-Forward CV on the CV window only.
 
     Optimizes the COMPOSITE objective:
-        score = 0.5 * mean(weighted_F1) + 0.5 * mean(ROC-AUC across folds with both classes)
+        score = 0.6 * mean(weighted_F1) + 0.4 * mean(ROC-AUC across folds with both classes)
 
-    F1 captures classification quality; ROC-AUC captures ranking quality.
+    F1 captures classification quality; ROC-AUC captures ranking quality. Weight
+    favours F1 slightly because the holdout positive rate (40%) is still below
+    50%, so threshold-based F1 is a stronger signal than threshold-free AUC.
     Both targets must be hit per Backend Guide v3 (F1 ≥ 0.75, AUC ≥ 0.80).
     Folds with single-class y_test contribute only to F1 (AUC undefined there).
     """
@@ -197,8 +199,9 @@ def _make_objective(
         mean_f1  = float(np.mean(fold_f1_scores))
         mean_auc = float(np.mean(fold_auc_scores)) if fold_auc_scores else mean_f1
 
-        # Composite: penalize models that win F1 by sacrificing ranking quality
-        return 0.5 * mean_f1 + 0.5 * mean_auc
+        # Weighted composite: 0.6 F1 + 0.4 AUC favours threshold classification
+        # while still rewarding ranking quality
+        return 0.6 * mean_f1 + 0.4 * mean_auc
 
     return objective
 
