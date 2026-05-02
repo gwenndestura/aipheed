@@ -215,9 +215,9 @@ def step6_labels():
     logger.info("=" * 60)
     from app.ml.features.label_generator import generate_labels
     labels_df = generate_labels()
-    dist = labels_df["label_fies"].value_counts().to_dict()
+    dist = labels_df["label_stress"].value_counts().to_dict()
     logger.info(
-        "Labels: %d province-quarter rows | label_fies distribution: %s",
+        "Labels: %d province-quarter rows | label_stress distribution: %s",
         len(labels_df), dist,
     )
     return labels_df

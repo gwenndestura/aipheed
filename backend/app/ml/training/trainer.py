@@ -42,7 +42,7 @@ MODEL_PATH    = Path("models/lgbm_best.pkl")
 STUDY_PATH    = Path("models/optuna_study.pkl")
 
 # ── Feature columns (31 features, no province_code, no quarter, no label) ────
-# pct_total_hunger is intentionally excluded: label_fies = (pct_total_hunger > cycle_median),
+# pct_total_hunger is intentionally excluded: label_stress = (stress_score > global_median) where stress_score = SWS hunger + 2*(food_cpi_yoy - regional_mean),
 # so including it hands the model the answer directly (perfect label leakage → ~100% accuracy).
 FEATURE_COLS = [
     # ── NLP / FSSI (secondary data) ──
@@ -69,7 +69,7 @@ FEATURE_COLS = [
     "diesel_php_per_l_lag1",     "diesel_php_per_l_accel",
 ]
 
-LABEL_COL    = "label_fies"
+LABEL_COL    = "label_stress"
 PROVINCE_COL = "province_code"
 QUARTER_COL  = "quarter"
 

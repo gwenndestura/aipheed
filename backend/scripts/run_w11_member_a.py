@@ -180,8 +180,8 @@ def step_w11_4(psa_path: Path = Path("data/processed/psa_indicators.parquet")) -
     from app.ml.features.feature_matrix import build_feature_matrix
 
     labels_df = generate_labels()
-    logger.info("Labels: %d rows | label_fies dist: %s",
-                len(labels_df), labels_df["label_fies"].value_counts().to_dict())
+    logger.info("Labels: %d rows | label_stress dist: %s",
+                len(labels_df), labels_df["label_stress"].value_counts().to_dict())
 
     features_df = build_feature_matrix()
     logger.info(

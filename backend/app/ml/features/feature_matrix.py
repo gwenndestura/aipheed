@@ -19,9 +19,10 @@ Feature groups and sources:
   9. Commodity basket: veg_price_mean, fish_price_mean, livestock_price_mean
  10. BERTopic props  : topic_N_pct columns (supplementary, if available)
 
-NOTE: pct_total_hunger (SWS) is NOT included here. The primary label label_fies is defined as
-(pct_total_hunger > cycle_median), so including it as a feature is direct label leakage.
-The label generator reads sws_hunger.parquet independently.
+NOTE: pct_total_hunger (SWS) is NOT included here. The primary label label_stress is the
+composite SWS hunger + PSA food CPI deviation score thresholded at the global median, so
+including SWS hunger directly as a feature would be label leakage. The label generator
+reads sws_hunger.parquet independently.
 
 LightGBM formula reference (Backend Guide v3):
     y_hat_p,t+3 = F(FSSI_t, FSSI_t-1, FSSI_t-2, dFSSI_t,
@@ -207,10 +208,11 @@ def _load_sws(path: Path) -> pd.DataFrame:
     """
     Intentionally returns an empty DataFrame.
 
-    pct_total_hunger is the raw SWS value from which label_fies is derived
-    (label = pct_total_hunger > cycle_median). Including it as a training feature
-    constitutes perfect label leakage and will produce ~100% accuracy.
-    The label generator reads sws_hunger.parquet directly and independently.
+    pct_total_hunger is the raw SWS value used in the composite stress score
+    that defines label_stress = stress_score > global_median, where
+    stress_score = sws_hunger + 2 * (food_cpi_yoy - regional_mean). Including
+    pct_total_hunger as a training feature would be label leakage. The label
+    generator reads sws_hunger.parquet directly and independently.
     """
     return pd.DataFrame()
 

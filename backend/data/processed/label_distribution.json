@@ -33,7 +33,7 @@
     "2025-Q3",
     "2025-Q4"
   ],
-  "label_fies": {
+  "label_stress": {
     "positive": 60,
     "negative": 60,
     "positive_rate": 0.5
@@ -45,7 +45,7 @@
   },
   "label_agreement_pct": 45.0,
   "label_definition": {
-    "primary": "stress_score_p,t = sws_hunger_t + 2 * (food_cpi_yoy_p,t - regional_mean_food_cpi_yoy_t); label_fies = 1 if stress_score > global_median",
+    "primary": "stress_score_p,t = sws_hunger_t + 2 * (food_cpi_yoy_p,t - regional_mean_food_cpi_yoy_t); label_stress = 1 if stress_score > global_median",
     "robustness": "label_cpi = 1 if food_cpi > rolling_24q_mean + 1\u03c3 for >= 2 consecutive quarters"
   },
   "sources": {

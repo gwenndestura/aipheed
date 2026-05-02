@@ -9,7 +9,7 @@ For every (province, quarter) cell in the 2020-Q1 → 2025-Q4 window:
 
     stress_score_p,t = SWS_hunger_t + α · (food_cpi_yoy_p,t − regional_mean_food_cpi_yoy_t)
 
-    label_fies_p,t = 1 if stress_score_p,t > global_median(stress_score) else 0
+    label_stress_p,t = 1 if stress_score_p,t > global_median(stress_score) else 0
 
 Sources:
   - SWS quarterly hunger (Social Weather Stations) — temporal signal, regional resolution.
@@ -34,7 +34,7 @@ ROBUSTNESS LABEL (CPI-deviation — sanity check)
 Source: data/processed/psa_indicators.parquet (food_cpi)
 Formula: y = 1 if food_CPI_t > rolling_mean_24q + σ for >= 2 consecutive quarters
 
-Used as a cross-check that label_fies tracks economic food-stress signals.
+Used as a cross-check that label_stress tracks economic food-stress signals.
 
 Outputs:
   data/processed/labels.parquet
@@ -107,12 +107,12 @@ def _build_stress_labels(
 
     Formula:
         stress_p,t = sws_hunger_t + ALPHA * (food_cpi_yoy_p,t − regional_mean_t)
-        label_fies = 1 if stress_p,t > global_median(stress) else 0
+        label_stress = 1 if stress_p,t > global_median(stress) else 0
 
     Returns DataFrame with columns:
         province_code, province_name, quarter,
         sws_hunger_pct, food_cpi_yoy, regional_food_cpi_yoy,
-        stress_score, global_threshold, label_fies
+        stress_score, global_threshold, label_stress
     """
     sws_df = pd.read_parquet(sws_path)
     psa_df = pd.read_parquet(psa_path)
@@ -178,13 +178,13 @@ def _build_stress_labels(
     # Guarantees ~50/50 class split across the full window.
     global_threshold = float(df["stress_score"].median())
     df["global_threshold"] = round(global_threshold, 4)
-    df["label_fies"] = (df["stress_score"] > global_threshold).astype(int)
+    df["label_stress"] = (df["stress_score"] > global_threshold).astype(int)
 
     logger.info(
-        "_build_stress_labels: %d province-quarter rows | label_fies distribution: %s | "
+        "_build_stress_labels: %d province-quarter rows | label_stress distribution: %s | "
         "global stress threshold: %.4f | stress range [%.4f, %.4f]",
         len(df),
-        df["label_fies"].value_counts().to_dict(),
+        df["label_stress"].value_counts().to_dict(),
         global_threshold,
         df["stress_score"].min(),
         df["stress_score"].max(),
@@ -304,7 +304,7 @@ def generate_labels(
         Columns: province_code, province_name, quarter,
                  sws_hunger_pct, food_cpi_yoy, regional_food_cpi_yoy,
                  stress_score, global_threshold,
-                 label_fies (PRIMARY composite stress label),
+                 label_stress (PRIMARY composite stress label),
                  label_cpi  (ROBUSTNESS CPI-deviation cross-check),
                  label_agreement
     """
@@ -316,7 +316,7 @@ def generate_labels(
     )
     labels_df["label_cpi"] = labels_df["label_cpi"].fillna(0).astype(int)
     labels_df["label_agreement"] = (
-        labels_df["label_fies"] == labels_df["label_cpi"]
+        labels_df["label_stress"] == labels_df["label_cpi"]
     )
 
     agreement_pct = labels_df["label_agreement"].mean() * 100
@@ -338,10 +338,10 @@ def generate_labels(
         "total_rows": len(labels_df),
         "provinces":  list(labels_df["province_code"].unique()),
         "quarters":   sorted(labels_df["quarter"].unique()),
-        "label_fies": {
-            "positive":      int((labels_df["label_fies"] == 1).sum()),
-            "negative":      int((labels_df["label_fies"] == 0).sum()),
-            "positive_rate": round(labels_df["label_fies"].mean(), 4),
+        "label_stress": {
+            "positive":      int((labels_df["label_stress"] == 1).sum()),
+            "negative":      int((labels_df["label_stress"] == 0).sum()),
+            "positive_rate": round(labels_df["label_stress"].mean(), 4),
         },
         "label_cpi_robustness": {
             "positive":      int((labels_df["label_cpi"] == 1).sum()),
@@ -351,7 +351,7 @@ def generate_labels(
         "label_agreement_pct": round(agreement_pct, 2),
         "label_definition": {
             "primary":  "stress_score_p,t = sws_hunger_t + 2 * (food_cpi_yoy_p,t - regional_mean_food_cpi_yoy_t); "
-                        "label_fies = 1 if stress_score > global_median",
+                        "label_stress = 1 if stress_score > global_median",
             "robustness": "label_cpi = 1 if food_cpi > rolling_24q_mean + 1σ for >= 2 consecutive quarters",
         },
         "sources": {

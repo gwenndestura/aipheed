@@ -15,7 +15,7 @@ Metrics per fold and aggregated:
   - Weighted F1, ROC-AUC, Accuracy, Precision (weighted), Recall (weighted)
 
 pct_total_hunger is EXCLUDED from all feature sets: it is the raw SWS value
-that directly determines label_fies (label = sws > cycle_median), so including
+that directly determines label_stress (composite stress label combining SWS hunger + PSA food CPI deviation), so including
 it would constitute label leakage.
 
 Output:
@@ -93,7 +93,7 @@ EXCLUDE_COLS: set[str] = {
     "pct_total_hunger",  # raw label source — leakage if included
 }
 
-LABEL_COL: str = "label_fies"
+LABEL_COL: str = "label_stress"
 
 # ---------------------------------------------------------------------------
 # Paths
@@ -340,7 +340,7 @@ def run_baseline_evaluation(
             "pct_total_hunger_excluded": True,
             "leakage_note": (
                 "pct_total_hunger excluded from all feature sets — "
-                "it is the raw SWS value that determines label_fies."
+                "it is the raw SWS value used in the composite stress score that determines label_stress."
             ),
         },
         "feature_groups": {
