@@ -34,6 +34,7 @@ from pathlib import Path
 
 import numpy as np
 import pandas as pd
+from lightgbm import LGBMClassifier
 from sklearn.linear_model import LogisticRegression
 from sklearn.metrics import (
     accuracy_score,
@@ -210,6 +211,51 @@ def _logistic_fold(
 
 
 # ---------------------------------------------------------------------------
+# Baseline 5–6: LightGBM ablations (NLP-only and PSA-only)
+# ---------------------------------------------------------------------------
+
+def _lgbm_fold(
+    train_df: pd.DataFrame,
+    test_df: pd.DataFrame,
+    feature_cols: list[str],
+    best_params: dict,
+) -> tuple[np.ndarray, np.ndarray]:
+    """
+    Fit LightGBM on train_df using feature_cols, predict on test_df.
+
+    Uses the best Optuna params from training_results.json so the comparison
+    is fair — same hyperparameters, different feature subsets.
+
+    Returns (y_pred, y_prob_positive).
+    """
+    available = set(train_df.columns)
+    cols = [c for c in feature_cols if c in available]
+    if len(cols) < len(feature_cols):
+        logger.warning(
+            "Missing feature columns (skipped): %s", set(feature_cols) - available
+        )
+
+    model = LGBMClassifier(
+        **best_params,
+        objective="binary",
+        boosting_type="gbdt",
+        verbosity=-1,
+        random_state=42,
+        class_weight="balanced",
+    )
+
+    X_train = train_df[cols]
+    y_train = train_df[LABEL_COL]
+    X_test  = test_df[cols]
+
+    model.fit(X_train, y_train)
+    y_pred = model.predict(X_test)
+    y_prob = model.predict_proba(X_test)[:, 1]
+
+    return y_pred, y_prob
+
+
+# ---------------------------------------------------------------------------
 # Metrics aggregation
 # ---------------------------------------------------------------------------
 
@@ -260,22 +306,31 @@ def run_baseline_evaluation(
     output_path: Path = OUTPUT_PATH,
     min_train_quarters: int = 8,
     forecast_gap: int = 3,
+    best_params: dict | None = None,
 ) -> dict:
     """
-    Run 4-baseline evaluation on walk-forward CV folds.
+    Run baseline evaluation on walk-forward CV folds.
 
-    Uses the same forecast_gap as the LightGBM trainer so the comparison is fair —
-    all baselines predict the same number of quarters ahead under the same gap constraint.
+    Evaluates 6 baselines on the SAME walk-forward folds as the LightGBM trainer:
 
-    Returns the full results dict (also saved to output_path).
+      1. Naive Persistence      — repeat last known label per province
+      2. PSA-Only Logistic      — logistic regression on economic/climate features
+      3. NLP-Only Logistic      — logistic regression on FSSI + trigger features
+      4. Full-Feature Logistic  — logistic regression on all 45 features
+      5. LightGBM NLP-Only      — LightGBM with best Optuna params, NLP features only
+      6. LightGBM PSA-Only      — LightGBM with best Optuna params, PSA features only
+
+    Baselines 5 and 6 require best_params (loaded from training_results.json by
+    run_w12_training.py). If best_params is None, they are skipped with a warning.
 
     Parameters
     ----------
-    features_path     : path to features_fused.parquet
-    labels_path       : path to labels.parquet
-    output_path       : where to save eval_results.json
-    min_train_quarters: minimum quarters in first training fold (default 8 = 2 years)
-    forecast_gap      : quarters between end of training and test quarter (default 3)
+    features_path       : path to features_fused.parquet
+    labels_path         : path to labels.parquet
+    output_path         : where to save eval_results.json
+    min_train_quarters  : minimum quarters in first training fold (default 8)
+    forecast_gap        : quarters between end of training and test quarter (default 3)
+    best_params         : best Optuna hyperparameters from trainer.py (dict or None)
     """
     df = _load_merged(features_path, labels_path)
     splitter = WalkForwardSplitter(
@@ -289,6 +344,17 @@ def run_baseline_evaluation(
         "nlp_only_logistic":     {"feature_cols": NLP_FEATURES, "type": "logistic"},
         "full_feature_logistic": {"feature_cols": ALL_FEATURES, "type": "logistic"},
     }
+
+    # Add LightGBM ablation baselines only if best_params is available
+    if best_params is not None:
+        baselines["lgbm_nlp_only"] = {"feature_cols": NLP_FEATURES, "type": "lgbm"}
+        baselines["lgbm_psa_only"] = {"feature_cols": PSA_FEATURES, "type": "lgbm"}
+        logger.info("LightGBM ablation baselines enabled (best_params provided).")
+    else:
+        logger.warning(
+            "best_params not provided — lgbm_nlp_only and lgbm_psa_only baselines "
+            "will be skipped. Pass best_params from train_model() to include them."
+        )
 
     fold_results: dict[str, list[dict]] = {name: [] for name in baselines}
     all_y_true:  dict[str, list]        = {name: [] for name in baselines}
@@ -310,6 +376,13 @@ def run_baseline_evaluation(
         for name, cfg in baselines.items():
             if cfg["type"] == "naive":
                 y_pred, y_prob = _naive_persistence_fold(train_df, test_df)
+            elif cfg["type"] == "lgbm":
+                try:
+                    y_pred, y_prob = _lgbm_fold(train_df, test_df, cfg["feature_cols"], best_params)
+                except Exception as exc:
+                    logger.warning("Fold %d baseline %s failed: %s", fold_idx, name, exc)
+                    y_pred = np.zeros(len(test_df), dtype=int)
+                    y_prob = np.zeros(len(test_df))
             else:
                 try:
                     y_pred, y_prob = _logistic_fold(train_df, test_df, cfg["feature_cols"])

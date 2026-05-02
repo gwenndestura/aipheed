@@ -107,7 +107,7 @@ def main():
         logger.info("=" * 60)
         try:
             from app.ml.training.evaluator import run_baseline_evaluation
-            eval_results = run_baseline_evaluation()
+            eval_results = run_baseline_evaluation(best_params=result["best_params"])
             logger.info("Baseline evaluation complete → data/processed/eval_results.json")
             # Print summary
             for baseline, metrics in eval_results.items():
