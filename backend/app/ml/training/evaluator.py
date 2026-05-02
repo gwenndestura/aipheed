@@ -72,6 +72,14 @@ PSA_FEATURES: list[str] = [
     "drought_alert", "enso_numeric",
     "commodity_fruit_veg", "commodity_leafy_veg", "commodity_livestock",
     "commodity_poultry", "commodity_rootcrops",
+    # 1-quarter lags (momentum signal — primary data only, mirrors FSSI_lag pattern)
+    "food_cpi_yoy_lag1",         "food_cpi_yoy_accel",
+    "food_minus_headline_yoy_lag1", "food_minus_headline_yoy_accel",
+    "unemployment_rate_lag1",    "unemployment_rate_accel",
+    "ofw_remit_yoy_pct_lag1",    "ofw_remit_yoy_pct_accel",
+    "rainfall_anomaly_pct_lag1", "rainfall_anomaly_pct_accel",
+    "rice_price_regular_lag1",   "rice_price_regular_accel",
+    "diesel_php_per_l_lag1",     "diesel_php_per_l_accel",
 ]
 
 ALL_FEATURES: list[str] = PSA_FEATURES + NLP_FEATURES

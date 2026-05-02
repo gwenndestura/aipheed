@@ -365,6 +365,25 @@ def build_feature_matrix(
                 lambda s: s.ffill().bfill()
             )
 
+    # ── Temporal lag features for primary data (momentum signal) ─────────
+    # Mirrors the FSSI_lag1/lag2/accel pattern that the model already uses.
+    # Adds 1-quarter lag and acceleration (Δ vs t-1) for the most informative
+    # primary signals: food prices, labor, climate, remittances, fuel.
+    df = df.sort_values(["province_code", "quarter"]).reset_index(drop=True)
+    LAG_FEATURES = [
+        "food_cpi_yoy",
+        "food_minus_headline_yoy",
+        "unemployment_rate",
+        "ofw_remit_yoy_pct",
+        "rainfall_anomaly_pct",
+        "rice_price_regular",
+        "diesel_php_per_l",
+    ]
+    for col in LAG_FEATURES:
+        if col in df.columns:
+            df[f"{col}_lag1"]  = df.groupby("province_code")[col].shift(1)
+            df[f"{col}_accel"] = df[col] - df[f"{col}_lag1"]
+
     # Fill remaining NaN → 0 (categorical flags, trigger proportions already 0-1)
     numeric_cols = df.select_dtypes(include=[np.number]).columns.tolist()
     df[numeric_cols] = df[numeric_cols].fillna(0.0)

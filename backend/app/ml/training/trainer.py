@@ -45,9 +45,11 @@ STUDY_PATH    = Path("models/optuna_study.pkl")
 # pct_total_hunger is intentionally excluded: label_fies = (pct_total_hunger > cycle_median),
 # so including it hands the model the answer directly (perfect label leakage → ~100% accuracy).
 FEATURE_COLS = [
+    # ── NLP / FSSI (secondary data) ──
     "FSSI", "FSSI_lag1", "FSSI_lag2", "FSSI_accel",
     "trigger_market", "trigger_climate", "trigger_employment",
     "trigger_ofw_remittance", "trigger_fish_kill",
+    # ── Primary data — current quarter ──
     "food_cpi", "food_cpi_yoy", "rice_price_regular",
     "unemployment_rate", "poverty_incidence",
     "food_minus_headline_yoy", "headline_cpi",
@@ -57,6 +59,14 @@ FEATURE_COLS = [
     "drought_alert", "enso_numeric",
     "commodity_fruit_veg", "commodity_leafy_veg",
     "commodity_livestock", "commodity_poultry", "commodity_rootcrops",
+    # ── Primary data — 1-quarter lag (momentum) ──
+    "food_cpi_yoy_lag1",         "food_cpi_yoy_accel",
+    "food_minus_headline_yoy_lag1", "food_minus_headline_yoy_accel",
+    "unemployment_rate_lag1",    "unemployment_rate_accel",
+    "ofw_remit_yoy_pct_lag1",    "ofw_remit_yoy_pct_accel",
+    "rainfall_anomaly_pct_lag1", "rainfall_anomaly_pct_accel",
+    "rice_price_regular_lag1",   "rice_price_regular_accel",
+    "diesel_php_per_l_lag1",     "diesel_php_per_l_accel",
 ]
 
 LABEL_COL    = "label_fies"
@@ -126,8 +136,13 @@ def _make_objective(
 ) -> callable:
     """
     Build Optuna objective using Walk-Forward CV on the CV window only.
-    df_cv is a thin DataFrame with only the 'quarter' column, sharing the
-    same index as X_cv / y_cv.  Maximises mean weighted F1 across folds.
+
+    Optimizes the COMPOSITE objective:
+        score = 0.5 * mean(weighted_F1) + 0.5 * mean(ROC-AUC across folds with both classes)
+
+    F1 captures classification quality; ROC-AUC captures ranking quality.
+    Both targets must be hit per Backend Guide v3 (F1 ≥ 0.75, AUC ≥ 0.80).
+    Folds with single-class y_test contribute only to F1 (AUC undefined there).
     """
     def objective(trial: optuna.Trial) -> float:
         params = {
@@ -135,15 +150,11 @@ def _make_objective(
             "verbosity":         -1,
             "boosting_type":     "gbdt",
             "random_state":      RANDOM_SEED,
-            # class_weight="balanced" compensates for imbalanced labels without
-            # manual scale_pos_weight tuning
             "class_weight":      "balanced",
             "num_leaves":        trial.suggest_int("num_leaves", 20, 150),
             "max_depth":         trial.suggest_int("max_depth", 3, 10),
             "learning_rate":     trial.suggest_float("learning_rate", 1e-4, 0.3, log=True),
             "n_estimators":      trial.suggest_int("n_estimators", 50, 500),
-            # min_child_samples lower-bound raised from 1→10 to prevent leaves
-            # with too few samples (a common source of overfitting on small panels)
             "min_child_samples": trial.suggest_int("min_child_samples", 10, 50),
             "subsample":         trial.suggest_float("subsample", 0.5, 1.0),
             "colsample_bytree":  trial.suggest_float("colsample_bytree", 0.5, 1.0),
@@ -155,14 +166,13 @@ def _make_objective(
             min_train_quarters=MIN_TRAIN_QUARTERS,
             forecast_gap=FORECAST_GAP,
         )
-        fold_f1_scores = []
+        fold_f1_scores  = []
+        fold_auc_scores = []
 
         for train_idx, test_idx in splitter.split(df_cv):
             if len(train_idx) < 5 or len(test_idx) < 1:
                 continue
 
-            # Use .loc because train_idx / test_idx are actual index labels,
-            # not positional integers (safe even if df_cv has a non-contiguous index)
             X_train = X_cv.loc[train_idx]
             y_train = y_cv.loc[train_idx]
             X_test  = X_cv.loc[test_idx]
@@ -171,14 +181,24 @@ def _make_objective(
             model = LGBMClassifier(**params)
             model.fit(X_train, y_train)
 
-            y_pred   = model.predict(X_test)
-            fold_f1  = f1_score(y_test, y_pred, average="weighted", zero_division=0)
+            y_pred  = model.predict(X_test)
+            y_proba = model.predict_proba(X_test)[:, 1]
+
+            fold_f1 = f1_score(y_test, y_pred, average="weighted", zero_division=0)
             fold_f1_scores.append(fold_f1)
+
+            # ROC-AUC only defined when both classes appear in y_test
+            if y_test.nunique() > 1:
+                fold_auc_scores.append(roc_auc_score(y_test, y_proba))
 
         if not fold_f1_scores:
             return 0.0
 
-        return float(np.mean(fold_f1_scores))
+        mean_f1  = float(np.mean(fold_f1_scores))
+        mean_auc = float(np.mean(fold_auc_scores)) if fold_auc_scores else mean_f1
+
+        # Composite: penalize models that win F1 by sacrificing ranking quality
+        return 0.5 * mean_f1 + 0.5 * mean_auc
 
     return objective
 

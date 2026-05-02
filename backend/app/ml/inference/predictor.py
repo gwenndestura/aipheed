@@ -54,6 +54,13 @@ FEATURE_COLS = [
     "drought_alert", "enso_numeric",
     "commodity_fruit_veg", "commodity_leafy_veg",
     "commodity_livestock", "commodity_poultry", "commodity_rootcrops",
+    "food_cpi_yoy_lag1",         "food_cpi_yoy_accel",
+    "food_minus_headline_yoy_lag1", "food_minus_headline_yoy_accel",
+    "unemployment_rate_lag1",    "unemployment_rate_accel",
+    "ofw_remit_yoy_pct_lag1",    "ofw_remit_yoy_pct_accel",
+    "rainfall_anomaly_pct_lag1", "rainfall_anomaly_pct_accel",
+    "rice_price_regular_lag1",   "rice_price_regular_accel",
+    "diesel_php_per_l_lag1",     "diesel_php_per_l_accel",
 ]
 
 DATA_SUFFICIENCY_MIN_ARTICLES = 5
