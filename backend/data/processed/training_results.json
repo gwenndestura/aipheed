@@ -11,7 +11,10 @@
     "reg_lambda": 8.668646909495295e-05
   },
   "best_cv_f1": 0.709,
+  "holdout_accuracy": 0.85,
   "holdout_f1": 0.8114,
+  "holdout_precision": 0.8737,
+  "holdout_recall": 0.85,
   "holdout_roc_auc": 0.9062,
   "meets_f1_target": true,
   "meets_roc_auc_target": true
