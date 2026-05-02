@@ -44,9 +44,26 @@
     "positive_rate": 0.6167
   },
   "label_agreement_pct": 45.0,
-  "source": {
-    "primary": "DOST-FNRI ENNS NNS 2021 + NNS 2023 (FAO SDG 2.1.2 FIES)",
-    "robustness": "PSA OpenStat food CPI rolling deviation",
-    "weak_supervision_ref": "Zhang et al. (2022) label inheritance"
+  "label_definition": {
+    "primary": "stress_score_p,t = sws_hunger_t + 2 * (food_cpi_yoy_p,t - regional_mean_food_cpi_yoy_t); label_fies = 1 if stress_score > global_median",
+    "robustness": "label_cpi = 1 if food_cpi > rolling_24q_mean + 1\u03c3 for >= 2 consecutive quarters"
+  },
+  "sources": {
+    "primary_label_temporal": "SWS quarterly Hunger Survey (1998-present)",
+    "primary_label_spatial": "PSA OpenStat food CPI YoY by province",
+    "robustness_label": "PSA OpenStat food CPI rolling deviation"
+  },
+  "fao_sdg_2_1_2_anchor": {
+    "note": "DOST-FNRI ENNS FIES regional baseline \u2014 NOT used in label generation. Cited as context in thesis intro to establish CALABARZON's elevated food insecurity prevalence per FAO SDG 2.1.2 methodology.",
+    "values": {
+      "NNS_2021": {
+        "moderate_or_severe_pct": 50.9,
+        "severe_pct": 11.7
+      },
+      "NNS_2023": {
+        "moderate_or_severe_pct": 51.6,
+        "severe_pct": 12.4
+      }
+    }
   }
 }

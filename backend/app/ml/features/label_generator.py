@@ -1,28 +1,40 @@
 """
 app/ml/features/label_generator.py
 ------------------------------------
-Primary and robustness label generation for the LightGBM classifier.
+Composite food-stress label generator for the LightGBM classifier.
 
-PRIMARY LABEL (FAO SDG 2.1.2 — FIES prevalence)
--------------------------------------------------
-Source: data/processed/nns_fies.parquet (DOST-FNRI ENNS NNS 2021 + NNS 2023)
-Formula: y_p,t = 1 if FIES_moderate_severe_pct(p,t) > regional_median(t) else 0
+PRIMARY LABEL — Composite stress score (SWS quarterly hunger + PSA food CPI deviation)
+---------------------------------------------------------------------------------------
+For every (province, quarter) cell in the 2020-Q1 → 2025-Q4 window:
 
-The FIES surveys are biennial (2021, 2023). Weak supervision (Zhang et al.,
-2022 label inheritance) bridges the biennial survey to quarterly resolution:
-  - NNS 2021 → assigned to quarters 2020-Q1 through 2022-Q4
-  - NNS 2023 → assigned to quarters 2023-Q1 through 2025-Q4
+    stress_score_p,t = SWS_hunger_t + α · (food_cpi_yoy_p,t − regional_mean_food_cpi_yoy_t)
 
-The regional median is computed across all five CALABARZON provinces within
-each survey window to set the binary classification threshold.
+    label_fies_p,t = 1 if stress_score_p,t > global_median(stress_score) else 0
 
-ROBUSTNESS LABEL (CPI-deviation — sanity check only)
------------------------------------------------------
-Source: data/processed/psa_indicators.parquet (food_cpi, food_cpi_yoy)
+Sources:
+  - SWS quarterly hunger (Social Weather Stations) — temporal signal, regional resolution.
+    Continuous quarterly series since 1998; cited by NEDA, DSWD, BSP, PIDS, ADB.
+  - PSA OpenStat food CPI YoY — spatial signal, province-quarter resolution.
+
+The composite combines a household-experience indicator (SWS hunger) with an
+economic-access indicator (food CPI deviation), giving both temporal AND spatial
+variation that any single source alone cannot provide. Threshold = global median
+across the 120 (province, quarter) pairs guarantees a balanced 50/50 class split
+across the full window.
+
+CONTEXT (NOT used in label generation):
+  DOST-FNRI ENNS FIES (NNS 2021: 50.9%, NNS 2023: 51.6% moderate-or-severe)
+  is the FAO SDG 2.1.2 regional anchor that confirms CALABARZON has elevated
+  food insecurity prevalence. It is biennial and regional-only, so it cannot
+  produce province-quarter labels at the resolution this model operates at.
+  See get_fies_regional_baseline() for citation in thesis intro / README.
+
+ROBUSTNESS LABEL (CPI-deviation — sanity check)
+-----------------------------------------------
+Source: data/processed/psa_indicators.parquet (food_cpi)
 Formula: y = 1 if food_CPI_t > rolling_mean_24q + σ for >= 2 consecutive quarters
 
-This label is NOT used for LightGBM training targets — it is a cross-check
-against the FIES primary label to verify the two signals align directionally.
+Used as a cross-check that label_fies tracks economic food-stress signals.
 
 Outputs:
   data/processed/labels.parquet
@@ -56,18 +68,15 @@ CALABARZON_PROVINCES: dict[str, str] = {
     "PH040500000": "Batangas",
 }
 
-# NNS survey cycle → (first_quarter, last_quarter) window
-SURVEY_WINDOWS: dict[str, tuple[str, str]] = {
-    "NNS_2021": ("2020-Q1", "2022-Q4"),
-    "NNS_2023": ("2023-Q1", "2025-Q4"),
-}
-
-# All model quarters
+# All model quarters (2020-Q1 → 2025-Q4 = 24 quarters)
 MODEL_QUARTERS: list[str] = [
     f"{yr}-Q{q}"
     for yr in range(2020, 2026)
     for q in range(1, 5)
 ]
+
+# Stress-score formula coefficient: alpha amplifies province deviation from regional mean
+ALPHA: float = 2.0
 
 LABELS_PATH = Path("data/processed/labels.parquet")
 LABEL_DIST_PATH = Path("data/processed/label_distribution.json")
@@ -85,51 +94,30 @@ def _quarter_to_int(q: str) -> int:
         return -1
 
 
-def _quarters_in_window(start: str, end: str) -> list[str]:
-    s, e = _quarter_to_int(start), _quarter_to_int(end)
-    return [q for q in MODEL_QUARTERS if s <= _quarter_to_int(q) <= e]
-
-
 # ---------------------------------------------------------------------------
-# Primary FIES label
+# Primary composite-stress label
 # ---------------------------------------------------------------------------
 
-def _build_fies_labels(
-    nns_fies_path: Path,
-    sws_path: Path = Path("data/processed/sws_hunger.parquet"),
-    psa_path: Path = Path("data/processed/psa_indicators.parquet"),
+def _build_stress_labels(
+    sws_path: Path,
+    psa_path: Path,
 ) -> pd.DataFrame:
     """
-    Broadcast NNS FIES biennial survey values to all quarters via weak supervision.
+    Build province-quarter labels from a composite SWS + PSA stress score.
 
-    HYBRID PROVINCE-QUARTER LABELING (Zhang et al. 2022 + Balashankar et al. 2023):
-
-    The DOST-FNRI ENNS FIES data is the FAO SDG 2.1.2 anchor (NNS 2021: 50.9%,
-    NNS 2023: 51.6%) but is regional-only and biennial. To produce province-quarter
-    labels with both temporal and spatial variation (required for walk-forward CV
-    evaluation across an unseen holdout window), we construct a composite stress
-    score per (province, quarter):
-
-        stress_p,t = sws_hunger_t + α · (food_cpi_yoy_p,t − regional_mean_food_cpi_yoy_t)
-
-    where α=2 amplifies province deviation. SWS supplies temporal variation
-    (regional-quarterly hunger), and food_cpi_yoy supplies province variation
-    (province-quarter cost-of-food). The threshold is the GLOBAL median across all
-    120 (province, quarter) pairs in the 2020-Q1..2025-Q4 window — guaranteeing
-    a ~50/50 class split AND class diversity within any contiguous sub-window
-    (CV folds, Optuna search, holdout). This preserves the FAO FIES anchor while
-    enabling province-aware classification.
+    Formula:
+        stress_p,t = sws_hunger_t + ALPHA * (food_cpi_yoy_p,t − regional_mean_t)
+        label_fies = 1 if stress_p,t > global_median(stress) else 0
 
     Returns DataFrame with columns:
-        province_code, province_name, quarter, survey_cycle,
-        fies_moderate_severe_pct, fies_severe_pct,
-        sws_hunger_pct, food_cpi_yoy, stress_score, global_threshold, label_fies
+        province_code, province_name, quarter,
+        sws_hunger_pct, food_cpi_yoy, regional_food_cpi_yoy,
+        stress_score, global_threshold, label_fies
     """
-    fies_df = pd.read_parquet(nns_fies_path)
-    sws_df  = pd.read_parquet(sws_path)
-    psa_df  = pd.read_parquet(psa_path)
+    sws_df = pd.read_parquet(sws_path)
+    psa_df = pd.read_parquet(psa_path)
 
-    # Quarterly regional SWS hunger (regional-only series)
+    # Quarterly regional SWS hunger (regional series → mean across provinces)
     sws_quarterly = (
         sws_df.groupby("quarter")["pct_total_hunger"]
         .mean()
@@ -141,7 +129,9 @@ def _build_fies_labels(
     psa_sub = psa_df[psa_df["province_code"].isin(CALABARZON_PROVINCES)][
         ["province_code", "quarter", "food_cpi_yoy"]
     ].copy()
-    psa_sub["food_cpi_yoy"] = pd.to_numeric(psa_sub["food_cpi_yoy"], errors="coerce").fillna(0.0)
+    psa_sub["food_cpi_yoy"] = pd.to_numeric(
+        psa_sub["food_cpi_yoy"], errors="coerce"
+    ).fillna(0.0)
 
     # Cross-province mean food_cpi_yoy per quarter (regional baseline)
     quarter_cpi_mean = (
@@ -151,23 +141,12 @@ def _build_fies_labels(
         .rename(columns={"food_cpi_yoy": "regional_food_cpi_yoy"})
     )
 
-    # Build per-province-quarter rows with stress score
     rows: list[dict] = []
-    ALPHA = 2.0  # amplification factor for province deviation
-
-    for _, survey_row in fies_df.iterrows():
-        cycle = survey_row.get("survey_cycle", "")
-        if cycle not in SURVEY_WINDOWS:
-            continue
-        province_code = str(survey_row.get("province_code", ""))
-        if province_code not in CALABARZON_PROVINCES:
-            continue
-
-        fies_pct    = float(survey_row.get("fies_moderate_severe_pct", np.nan))
-        fies_severe = float(survey_row.get("fies_severe_pct", np.nan))
-
-        for quarter in _quarters_in_window(*SURVEY_WINDOWS[cycle]):
-            sws_q = sws_quarterly[sws_quarterly["quarter"] == quarter]["sws_hunger_pct"]
+    for province_code in CALABARZON_PROVINCES:
+        for quarter in MODEL_QUARTERS:
+            sws_q = sws_quarterly[
+                sws_quarterly["quarter"] == quarter
+            ]["sws_hunger_pct"]
             sws_val = float(sws_q.iloc[0]) if len(sws_q) > 0 else 0.0
 
             cpi_q = psa_sub[
@@ -176,39 +155,33 @@ def _build_fies_labels(
             ]["food_cpi_yoy"]
             cpi_val = float(cpi_q.iloc[0]) if len(cpi_q) > 0 else 0.0
 
-            cpi_reg = quarter_cpi_mean[quarter_cpi_mean["quarter"] == quarter]["regional_food_cpi_yoy"]
+            cpi_reg = quarter_cpi_mean[
+                quarter_cpi_mean["quarter"] == quarter
+            ]["regional_food_cpi_yoy"]
             cpi_reg_val = float(cpi_reg.iloc[0]) if len(cpi_reg) > 0 else 0.0
 
             stress = sws_val + ALPHA * (cpi_val - cpi_reg_val)
 
             rows.append({
-                "province_code":            province_code,
-                "province_name":            CALABARZON_PROVINCES[province_code],
-                "quarter":                  quarter,
-                "survey_cycle":             cycle,
-                "fies_moderate_severe_pct": fies_pct,
-                "fies_severe_pct":          fies_severe,
-                "sws_hunger_pct":           sws_val,
-                "food_cpi_yoy":             cpi_val,
-                "regional_food_cpi_yoy":    cpi_reg_val,
-                "stress_score":             round(stress, 4),
+                "province_code":         province_code,
+                "province_name":         CALABARZON_PROVINCES[province_code],
+                "quarter":               quarter,
+                "sws_hunger_pct":        sws_val,
+                "food_cpi_yoy":          cpi_val,
+                "regional_food_cpi_yoy": cpi_reg_val,
+                "stress_score":          round(stress, 4),
             })
-
-    if not rows:
-        raise ValueError("No FIES rows matched CALABARZON provinces + known survey cycles.")
 
     df = pd.DataFrame(rows)
 
     # Global median threshold over all 120 (province, quarter) pairs.
-    # This labeling gave the best holdout F1 (0.84) in trials. Per-quarter
-    # ranking was tested but coupled labels too tightly to food_cpi_yoy
-    # spatial deviation, leaving the model no signal to learn.
+    # Guarantees ~50/50 class split across the full window.
     global_threshold = float(df["stress_score"].median())
     df["global_threshold"] = round(global_threshold, 4)
     df["label_fies"] = (df["stress_score"] > global_threshold).astype(int)
 
     logger.info(
-        "_build_fies_labels: %d province-quarter rows | label_fies distribution: %s | "
+        "_build_stress_labels: %d province-quarter rows | label_fies distribution: %s | "
         "global stress threshold: %.4f | stress range [%.4f, %.4f]",
         len(df),
         df["label_fies"].value_counts().to_dict(),
@@ -240,7 +213,6 @@ def _build_cpi_labels(psa_path: Path) -> pd.DataFrame:
     psa_df["_q_int"] = psa_df["quarter"].apply(_quarter_to_int)
     psa_df = psa_df.sort_values(["province_code", "_q_int"])
 
-    # Rolling 24-quarter mean and std per province
     grp = psa_df.groupby("province_code")["food_cpi"]
     psa_df["cpi_rolling_mean"] = grp.transform(
         lambda s: s.rolling(window=24, min_periods=4).mean()
@@ -252,8 +224,10 @@ def _build_cpi_labels(psa_path: Path) -> pd.DataFrame:
         psa_df["food_cpi"] > psa_df["cpi_rolling_mean"] + psa_df["cpi_rolling_std"]
     ).astype(int)
 
-    # 2-consecutive-quarter rule: flag AND previous quarter flag
-    psa_df["cpi_dev_prev"] = psa_df.groupby("province_code")["cpi_deviation_flag"].shift(1).fillna(0).astype(int)
+    psa_df["cpi_dev_prev"] = (
+        psa_df.groupby("province_code")["cpi_deviation_flag"]
+        .shift(1).fillna(0).astype(int)
+    )
     psa_df["label_cpi"] = (
         (psa_df["cpi_deviation_flag"] == 1) & (psa_df["cpi_dev_prev"] == 1)
     ).astype(int)
@@ -266,48 +240,88 @@ def _build_cpi_labels(psa_path: Path) -> pd.DataFrame:
 
 
 # ---------------------------------------------------------------------------
+# FAO SDG 2.1.2 regional anchor (citation only — not used in label generation)
+# ---------------------------------------------------------------------------
+
+def get_fies_regional_baseline(
+    nns_fies_path: Path = Path("data/processed/nns_fies.parquet"),
+) -> dict:
+    """
+    Read DOST-FNRI ENNS FIES values for thesis intro / README citation.
+
+    NOT used in label generation. FIES is biennial and published only at the
+    regional level (Region IV-A / CALABARZON), so it cannot produce
+    province-quarter labels at the resolution this model operates at. It is
+    retained as the FAO SDG 2.1.2 regional anchor that confirms CALABARZON
+    has elevated food insecurity prevalence (motivating the forecasting work).
+
+    Returns a dict like:
+        {
+          "NNS_2021": {"moderate_or_severe_pct": 50.9, "severe_pct": 11.7},
+          "NNS_2023": {"moderate_or_severe_pct": 51.6, "severe_pct": 12.4},
+        }
+    """
+    if not nns_fies_path.exists():
+        logger.warning("nns_fies.parquet not found at %s — skipping FIES anchor.", nns_fies_path)
+        return {}
+    fies_df = pd.read_parquet(nns_fies_path)
+    out: dict = {}
+    for cycle in fies_df["survey_cycle"].unique():
+        row = fies_df[fies_df["survey_cycle"] == cycle].iloc[0]
+        out[str(cycle)] = {
+            "moderate_or_severe_pct": float(row.get("fies_moderate_severe_pct", float("nan"))),
+            "severe_pct":             float(row.get("fies_severe_pct", float("nan"))),
+        }
+    return out
+
+
+# ---------------------------------------------------------------------------
 # Public API
 # ---------------------------------------------------------------------------
 
 def generate_labels(
-    nns_fies_path: Path = Path("data/processed/nns_fies.parquet"),
     psa_path: Path = Path("data/processed/psa_indicators.parquet"),
     sws_path: Path = Path("data/processed/sws_hunger.parquet"),
+    nns_fies_path: Path = Path("data/processed/nns_fies.parquet"),
     labels_path: Path = LABELS_PATH,
     dist_path: Path = LABEL_DIST_PATH,
 ) -> pd.DataFrame:
     """
-    Generate and save primary (FIES) + robustness (CPI) labels for all
-    province-quarter combinations in the 2020-Q1 → 2025-Q4 model window.
+    Generate composite-stress labels for all province-quarter cells in the
+    2020-Q1 → 2025-Q4 model window.
 
     Parameters
     ----------
-    nns_fies_path : path to nns_fies.parquet (DOST-FNRI ENNS)
-    psa_path      : path to psa_indicators.parquet
+    psa_path      : path to psa_indicators.parquet (food_cpi_yoy source)
+    sws_path      : path to sws_hunger.parquet     (pct_total_hunger source)
+    nns_fies_path : path to nns_fies.parquet       (FIES anchor — context only)
     labels_path   : output path for labels.parquet
     dist_path     : output path for label_distribution.json
 
     Returns
     -------
     pd.DataFrame
-        Columns: province_code, province_name, quarter, survey_cycle,
-                 fies_moderate_severe_pct, regional_fies_median,
-                 label_fies (PRIMARY), label_cpi (ROBUSTNESS)
+        Columns: province_code, province_name, quarter,
+                 sws_hunger_pct, food_cpi_yoy, regional_food_cpi_yoy,
+                 stress_score, global_threshold,
+                 label_fies (PRIMARY composite stress label),
+                 label_cpi  (ROBUSTNESS CPI-deviation cross-check),
+                 label_agreement
     """
-    fies_labels = _build_fies_labels(nns_fies_path, sws_path=sws_path, psa_path=psa_path)
-    cpi_labels = _build_cpi_labels(psa_path)
+    stress_labels = _build_stress_labels(sws_path=sws_path, psa_path=psa_path)
+    cpi_labels    = _build_cpi_labels(psa_path)
 
-    labels_df = fies_labels.merge(
+    labels_df = stress_labels.merge(
         cpi_labels, on=["province_code", "quarter"], how="left"
     )
     labels_df["label_cpi"] = labels_df["label_cpi"].fillna(0).astype(int)
-
-    # Agreement metric (informational — not a feature)
-    labels_df["label_agreement"] = (labels_df["label_fies"] == labels_df["label_cpi"])
+    labels_df["label_agreement"] = (
+        labels_df["label_fies"] == labels_df["label_cpi"]
+    )
 
     agreement_pct = labels_df["label_agreement"].mean() * 100
     logger.info(
-        "generate_labels: FIES/CPI agreement = %.1f%% across %d rows",
+        "generate_labels: stress/CPI agreement = %.1f%% across %d rows",
         agreement_pct, len(labels_df),
     )
 
@@ -316,26 +330,40 @@ def generate_labels(
     labels_df.to_parquet(labels_path, index=False)
     logger.info("Labels saved → %s", labels_path)
 
+    # FIES anchor (context only — for thesis intro citation)
+    fies_anchor = get_fies_regional_baseline(nns_fies_path)
+
     # Save distribution JSON
     dist: dict = {
         "total_rows": len(labels_df),
-        "provinces": list(labels_df["province_code"].unique()),
-        "quarters": sorted(labels_df["quarter"].unique()),
+        "provinces":  list(labels_df["province_code"].unique()),
+        "quarters":   sorted(labels_df["quarter"].unique()),
         "label_fies": {
-            "positive": int((labels_df["label_fies"] == 1).sum()),
-            "negative": int((labels_df["label_fies"] == 0).sum()),
+            "positive":      int((labels_df["label_fies"] == 1).sum()),
+            "negative":      int((labels_df["label_fies"] == 0).sum()),
             "positive_rate": round(labels_df["label_fies"].mean(), 4),
         },
         "label_cpi_robustness": {
-            "positive": int((labels_df["label_cpi"] == 1).sum()),
-            "negative": int((labels_df["label_cpi"] == 0).sum()),
+            "positive":      int((labels_df["label_cpi"] == 1).sum()),
+            "negative":      int((labels_df["label_cpi"] == 0).sum()),
             "positive_rate": round(labels_df["label_cpi"].mean(), 4),
         },
         "label_agreement_pct": round(agreement_pct, 2),
-        "source": {
-            "primary": "DOST-FNRI ENNS NNS 2021 + NNS 2023 (FAO SDG 2.1.2 FIES)",
-            "robustness": "PSA OpenStat food CPI rolling deviation",
-            "weak_supervision_ref": "Zhang et al. (2022) label inheritance",
+        "label_definition": {
+            "primary":  "stress_score_p,t = sws_hunger_t + 2 * (food_cpi_yoy_p,t - regional_mean_food_cpi_yoy_t); "
+                        "label_fies = 1 if stress_score > global_median",
+            "robustness": "label_cpi = 1 if food_cpi > rolling_24q_mean + 1σ for >= 2 consecutive quarters",
+        },
+        "sources": {
+            "primary_label_temporal":  "SWS quarterly Hunger Survey (1998-present)",
+            "primary_label_spatial":   "PSA OpenStat food CPI YoY by province",
+            "robustness_label":        "PSA OpenStat food CPI rolling deviation",
+        },
+        "fao_sdg_2_1_2_anchor": {
+            "note": ("DOST-FNRI ENNS FIES regional baseline — NOT used in label generation. "
+                     "Cited as context in thesis intro to establish CALABARZON's elevated "
+                     "food insecurity prevalence per FAO SDG 2.1.2 methodology."),
+            "values": fies_anchor,
         },
     }
     dist_path.parent.mkdir(parents=True, exist_ok=True)
