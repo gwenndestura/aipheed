@@ -5,13 +5,13 @@
     "n_folds": 13,
     "n_provinces": 5,
     "n_quarters": 24,
-    "label_col": "label_fies",
+    "label_col": "label_stress",
     "label_distribution": {
       "1": 60,
       "0": 60
     },
     "pct_total_hunger_excluded": true,
-    "leakage_note": "pct_total_hunger excluded from all feature sets \u2014 it is the raw SWS value that determines label_fies."
+    "leakage_note": "pct_total_hunger excluded from all feature sets \u2014 it is the raw SWS value used in the composite stress score that determines label_stress."
   },
   "feature_groups": {
     "nlp_features": [
