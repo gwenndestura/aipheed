@@ -72,11 +72,11 @@ TITLE_STOP: frozenset[str] = frozenset({
 })
 
 PROVINCES = {
-    "PH040100000": "Batangas",
-    "PH040200000": "Cavite",
-    "PH040300000": "Laguna",
-    "PH040400000": "Quezon",
-    "PH040500000": "Rizal",
+    "PH040100000": "Cavite",
+    "PH040200000": "Laguna",
+    "PH040300000": "Quezon",
+    "PH040400000": "Rizal",
+    "PH040500000": "Batangas",
 }
 
 MODEL_QUARTERS = [f"{yr}-Q{q}" for yr in range(2020, 2026) for q in range(1, 5)]

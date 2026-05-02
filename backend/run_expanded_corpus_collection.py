@@ -317,8 +317,8 @@ def main() -> None:
     parser.add_argument("--end", default="2025-12-31")
     parser.add_argument(
         "--sources", nargs="+",
-        choices=["gnews_rss", "rss", "newsdata", "gdelt"],
-        default=["gnews_rss", "rss", "newsdata", "gdelt"],
+        choices=["gnews_rss", "rss", "gdelt"],
+        default=["gnews_rss", "rss", "gdelt"],
         help="Which fetchers to run (default: all)",
     )
     parser.add_argument("--no-classify", action="store_true",
@@ -382,28 +382,13 @@ def main() -> None:
                 logger.info("  RSS: %d articles", len(rss))
                 all_new += rss
 
-        # ── 3. NewsData.io ────────────────────────────────────────────────
-        if "newsdata" in args.sources:
-            cached = _load_checkpoint("newsdata") if args.resume else None
-            if cached is not None:
-                all_new += cached
-            else:
-                logger.info("[3/4] NewsData.io fetcher...")
-                from app.ml.corpus.newsdata_fetcher import fetch_newsdata_articles
-                newsdata = fetch_newsdata_articles(start_date, end_date)
-                for r in newsdata:
-                    r.setdefault("fetcher_source", "newsdata")
-                _save_checkpoint("newsdata", newsdata)
-                logger.info("  NewsData.io: %d articles", len(newsdata))
-                all_new += newsdata
-
-        # ── 4. GDELT Project (last — slowest, ~40-60 min) ─────────────────
+        # ── 3. GDELT Project (last — slowest, ~40-60 min) ─────────────────
         if "gdelt" in args.sources:
             cached = _load_checkpoint("gdelt") if args.resume else None
             if cached is not None:
                 all_new += cached
             else:
-                logger.info("[4/4] GDELT Project fetcher (this takes ~40-60 min)...")
+                logger.info("[3/3] GDELT Project fetcher (this takes ~40-60 min)...")
                 from app.ml.corpus.gdelt_fetcher import fetch_gdelt_articles
                 gdelt = fetch_gdelt_articles(start_date, end_date)
                 for r in gdelt:
@@ -505,7 +490,7 @@ def main() -> None:
     if "province_code" in combined.columns:
         prov_map = {
             "PH040100000": "Cavite", "PH040200000": "Laguna",
-            "PH040300000": "Rizal",  "PH040400000": "Quezon",
+            "PH040300000": "Quezon", "PH040400000": "Rizal",
             "PH040500000": "Batangas",
         }
         for code, name in prov_map.items():
