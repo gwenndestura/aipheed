@@ -30,7 +30,7 @@ import pandas as pd
 
 from pathlib import Path
 from lightgbm import LGBMClassifier
-from sklearn.metrics import f1_score, roc_auc_score
+from sklearn.metrics import accuracy_score, f1_score, precision_score, recall_score, roc_auc_score
 from app.ml.training.cross_validation import WalkForwardSplitter
 
 logger = logging.getLogger(__name__)
@@ -302,7 +302,10 @@ def train_model() -> dict:
     y_pred_h = eval_model.predict(X_holdout)
     y_prob_h = eval_model.predict_proba(X_holdout)[:, 1]
 
-    holdout_f1  = float(f1_score(y_holdout, y_pred_h, average="weighted", zero_division=0))
+    holdout_f1        = float(f1_score(y_holdout, y_pred_h, average="weighted", zero_division=0))
+    holdout_accuracy  = float(accuracy_score(y_holdout, y_pred_h))
+    holdout_precision = float(precision_score(y_holdout, y_pred_h, average="weighted", zero_division=0))
+    holdout_recall    = float(recall_score(y_holdout, y_pred_h, average="weighted", zero_division=0))
     try:
         holdout_auc = float(roc_auc_score(y_holdout, y_prob_h))
     except ValueError:
@@ -310,8 +313,11 @@ def train_model() -> dict:
         holdout_auc = float("nan")
         logger.warning("roc_auc_score undefined on holdout (single class present)")
 
-    logger.info("Holdout F1      : %.4f", holdout_f1)
-    logger.info("Holdout ROC-AUC : %.4f", holdout_auc)
+    logger.info("Holdout Accuracy  : %.4f", holdout_accuracy)
+    logger.info("Holdout F1        : %.4f", holdout_f1)
+    logger.info("Holdout Precision : %.4f", holdout_precision)
+    logger.info("Holdout Recall    : %.4f", holdout_recall)
+    logger.info("Holdout ROC-AUC   : %.4f", holdout_auc)
     logger.info(
         "F1 target  (%s) : %s", TARGET_F1,
         "PASS" if holdout_f1 >= TARGET_F1 else "FAIL",
@@ -338,7 +344,10 @@ def train_model() -> dict:
             mlflow.log_param("forecast_gap",      FORECAST_GAP)
             mlflow.log_param("holdout_quarters",  HOLDOUT_QUARTERS)
             mlflow.log_metric("best_cv_f1",       best_cv_f1)
+            mlflow.log_metric("holdout_accuracy", holdout_accuracy)
             mlflow.log_metric("holdout_f1",       holdout_f1)
+            mlflow.log_metric("holdout_precision", holdout_precision)
+            mlflow.log_metric("holdout_recall",   holdout_recall)
             # ROC-AUC may be NaN when holdout has a single class — skip in that case
             if not (holdout_auc != holdout_auc):  # NaN check
                 mlflow.log_metric("holdout_roc_auc", holdout_auc)
@@ -356,7 +365,10 @@ def train_model() -> dict:
     return {
         "best_params":           best_params,
         "best_cv_f1":            round(best_cv_f1, 4),
+        "holdout_accuracy":      round(holdout_accuracy, 4),
         "holdout_f1":            round(holdout_f1, 4),
+        "holdout_precision":     round(holdout_precision, 4),
+        "holdout_recall":        round(holdout_recall, 4),
         "holdout_roc_auc":       round(holdout_auc, 4),
         "meets_f1_target":       holdout_f1 >= TARGET_F1,
         "meets_roc_auc_target":  holdout_auc >= TARGET_ROC_AUC,

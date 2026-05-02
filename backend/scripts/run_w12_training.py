@@ -83,10 +83,13 @@ def main():
 
     logger.info("=" * 60)
     logger.info("TRAINING RESULTS")
-    logger.info("  Best CV F1       : %.4f", result["best_cv_f1"])
-    logger.info("  Holdout F1       : %.4f", result["holdout_f1"])
-    logger.info("  Holdout ROC-AUC  : %.4f", result["holdout_roc_auc"])
-    logger.info("  F1 target (>=0.75)  : %s", "PASS" if result["meets_f1_target"] else "FAIL")
+    logger.info("  Best CV F1        : %.4f", result["best_cv_f1"])
+    logger.info("  Holdout Accuracy  : %.4f", result["holdout_accuracy"])
+    logger.info("  Holdout F1        : %.4f", result["holdout_f1"])
+    logger.info("  Holdout Precision : %.4f", result["holdout_precision"])
+    logger.info("  Holdout Recall    : %.4f", result["holdout_recall"])
+    logger.info("  Holdout ROC-AUC   : %.4f", result["holdout_roc_auc"])
+    logger.info("  F1 target  (>=0.75) : %s", "PASS" if result["meets_f1_target"] else "FAIL")
     logger.info("  AUC target (>=0.80) : %s", "PASS" if result["meets_roc_auc_target"] else "FAIL")
     logger.info("=" * 60)
 
