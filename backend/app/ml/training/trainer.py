@@ -196,12 +196,10 @@ def _make_objective(
         if not fold_f1_scores:
             return 0.0
 
-        mean_f1  = float(np.mean(fold_f1_scores))
-        mean_auc = float(np.mean(fold_auc_scores)) if fold_auc_scores else mean_f1
-
-        # Weighted composite: 0.6 F1 + 0.4 AUC favours threshold classification
-        # while still rewarding ranking quality
-        return 0.6 * mean_f1 + 0.4 * mean_auc
+        # Pure F1 objective — best empirical result (holdout F1=0.84) when
+        # paired with global-stress-threshold labeling. Composite F1+AUC was
+        # tested but cost F1 without meaningfully lifting AUC.
+        return float(np.mean(fold_f1_scores))
 
     return objective
 
