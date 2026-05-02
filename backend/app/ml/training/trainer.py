@@ -310,16 +310,27 @@ def train_model() -> dict:
     joblib.dump(study, STUDY_PATH)
     logger.info("Production model saved to %s", MODEL_PATH)
 
-    # ── MLflow logging ────────────────────────────────────────────────────
-    with mlflow.start_run(run_name="lgbm_aipheed"):
-        mlflow.log_params(best_params)
-        mlflow.log_param("forecast_gap",      FORECAST_GAP)
-        mlflow.log_param("holdout_quarters",  HOLDOUT_QUARTERS)
-        mlflow.log_metric("best_cv_f1",       best_cv_f1)
-        mlflow.log_metric("holdout_f1",       holdout_f1)
-        mlflow.log_metric("holdout_roc_auc",  holdout_auc)
-        mlflow.log_metric("n_trials",         N_TRIALS)
-        mlflow.sklearn.log_model(prod_model, "lgbm_model")
+    # ── MLflow logging (best-effort; model already saved to disk) ────────
+    try:
+        with mlflow.start_run(run_name="lgbm_aipheed"):
+            mlflow.log_params(best_params)
+            mlflow.log_param("forecast_gap",      FORECAST_GAP)
+            mlflow.log_param("holdout_quarters",  HOLDOUT_QUARTERS)
+            mlflow.log_metric("best_cv_f1",       best_cv_f1)
+            mlflow.log_metric("holdout_f1",       holdout_f1)
+            # ROC-AUC may be NaN when holdout has a single class — skip in that case
+            if not (holdout_auc != holdout_auc):  # NaN check
+                mlflow.log_metric("holdout_roc_auc", holdout_auc)
+            mlflow.log_metric("n_trials",         N_TRIALS)
+            try:
+                mlflow.sklearn.log_model(prod_model, name="lgbm_model")
+            except Exception as exc:
+                logger.warning("MLflow log_model skipped (%s) — model is on disk.", exc)
+    except Exception as exc:
+        logger.warning(
+            "MLflow logging failed (%s) — production model is still saved at %s.",
+            exc, MODEL_PATH,
+        )
 
     return {
         "best_params":           best_params,
