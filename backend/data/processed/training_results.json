@@ -1,0 +1,18 @@
+{
+  "best_params": {
+    "num_leaves": 137,
+    "max_depth": 8,
+    "learning_rate": 0.2597250997981822,
+    "n_estimators": 345,
+    "min_child_samples": 16,
+    "subsample": 0.5047621501833581,
+    "colsample_bytree": 0.9359495600627892,
+    "reg_alpha": 6.243109433799905e-07,
+    "reg_lambda": 8.668646909495295e-05
+  },
+  "best_cv_f1": 0.709,
+  "holdout_f1": 0.8114,
+  "holdout_roc_auc": 0.9062,
+  "meets_f1_target": true,
+  "meets_roc_auc_target": true
+}

@@ -1,0 +1,52 @@
+{
+  "total_rows": 120,
+  "provinces": [
+    "PH040100000",
+    "PH040200000",
+    "PH040300000",
+    "PH040400000",
+    "PH040500000"
+  ],
+  "quarters": [
+    "2020-Q1",
+    "2020-Q2",
+    "2020-Q3",
+    "2020-Q4",
+    "2021-Q1",
+    "2021-Q2",
+    "2021-Q3",
+    "2021-Q4",
+    "2022-Q1",
+    "2022-Q2",
+    "2022-Q3",
+    "2022-Q4",
+    "2023-Q1",
+    "2023-Q2",
+    "2023-Q3",
+    "2023-Q4",
+    "2024-Q1",
+    "2024-Q2",
+    "2024-Q3",
+    "2024-Q4",
+    "2025-Q1",
+    "2025-Q2",
+    "2025-Q3",
+    "2025-Q4"
+  ],
+  "label_fies": {
+    "positive": 60,
+    "negative": 60,
+    "positive_rate": 0.5
+  },
+  "label_cpi_robustness": {
+    "positive": 74,
+    "negative": 46,
+    "positive_rate": 0.6167
+  },
+  "label_agreement_pct": 45.0,
+  "source": {
+    "primary": "DOST-FNRI ENNS NNS 2021 + NNS 2023 (FAO SDG 2.1.2 FIES)",
+    "robustness": "PSA OpenStat food CPI rolling deviation",
+    "weak_supervision_ref": "Zhang et al. (2022) label inheritance"
+  }
+}
