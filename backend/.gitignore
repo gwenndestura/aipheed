@@ -9,6 +9,11 @@ __pycache__/
 # Environment variables
 .env
 
+# Google Cloud service-account keys — never commit
+aipheed-gdelt-*.json
+*service-account*.json
+gcp-key*.json
+
 # Model files — never commit
 models/
 *.pkl
