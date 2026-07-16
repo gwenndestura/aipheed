@@ -311,19 +311,29 @@ def _fetch_from_bigquery(start_date: str, end_date: str) -> list[dict] | None:
 # Helpers
 # ---------------------------------------------------------------------------
 
-def _quarter_windows(start_date: str, end_date: str) -> list[tuple[str, str]]:
-    """Split date range into quarterly windows (GDELT date format: YYYYMMDDHHMMSS)."""
+def _date_windows(
+    start_date: str,
+    end_date: str,
+    window_days: int = 90,
+) -> list[tuple[str, str]]:
+    """
+    Split date range into windows (GDELT date format: YYYYMMDDHHMMSS).
+
+    GDELT caps results at MAX_RECORDS (250) per query per window, so busy
+    queries saturate a 90-day window. Passing window_days=30 triples the
+    window density and recovers the truncated long tail.
+    """
     start = datetime.fromisoformat(start_date)
     end = datetime.fromisoformat(end_date)
     windows: list[tuple[str, str]] = []
     current = start
     while current < end:
-        q_end = min(current + timedelta(days=90), end)
+        w_end = min(current + timedelta(days=window_days), end)
         windows.append((
             current.strftime("%Y%m%d%H%M%S"),
-            q_end.strftime("%Y%m%d%H%M%S"),
+            w_end.strftime("%Y%m%d%H%M%S"),
         ))
-        current = q_end
+        current = w_end
     return windows
 
 
@@ -358,15 +368,11 @@ def _parse_gdelt_article(item: dict) -> dict | None:
     if not title:
         return None
 
-    # Food signal check on title only.
-    # Geo is NOT checked here — GDELT returns title only (no body text), and the
-    # LGU name is already encoded in the query string (e.g. '"Batangas City"
-    # (food OR hunger OR rice OR ...)'), so an article titled "Rice prices climb
-    # ahead of planting season" is legitimately geo-scoped by the query even
-    # though the place name does not appear in the title.
-    title_lower = title.lower()
-    if not any(kw in title_lower for kw in CALABARZON_FOOD_SIGNALS):
-        return None
+    # No keyword gate: relevance is decided downstream by the XLM-RoBERTa
+    # zero-shot NLI scorer from the article's full context and meaning, not
+    # word presence. The query already encodes food + geo intent ('"Batangas
+    # City" (food OR hunger OR rice OR ...)') and the credible-domain check
+    # above bounds the noise.
 
     # GDELT seendate format: YYYYMMDDTHHMMSSZ
     seendate = item.get("seendate", "")
@@ -411,35 +417,37 @@ def fetch_gdelt_articles(
     start_date: str,
     end_date: str,
     prefer_bigquery: bool = True,
+    window_days: int = 90,
 ) -> list[dict]:
     """
     Fetch CALABARZON food insecurity articles from GDELT.
-    
+
     Automatically uses BigQuery if available (faster, full text, no caps).
     Falls back to REST API if BigQuery fails or credentials missing.
-    
+
     Parameters
     ----------
     start_date : "2020-01-01"
     end_date   : "2025-12-31"
     prefer_bigquery : bool - try BigQuery first if True
+    window_days : int - REST window size; 30 triples density vs default 90
 
     Returns
     -------
     list[dict]  — standard corpus records
     """
-    
+
     # Try BigQuery first if enabled
     if prefer_bigquery and _USE_BIGQUERY:
         bigquery_results = _fetch_from_bigquery(start_date, end_date)
         if bigquery_results is not None:
             return bigquery_results
         logger.info("BigQuery unavailable, falling back to REST API")
-    
+
     # Original REST API implementation (fallback)
     logger.info("Using GDELT REST API (titles only, rate-limited)")
-    
-    windows = _quarter_windows(start_date, end_date)
+
+    windows = _date_windows(start_date, end_date, window_days)
     records: list[dict] = []
     seen_ids: set[str] = set()
 

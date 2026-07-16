@@ -395,6 +395,8 @@ def main() -> None:
                         help="Only run Claude classification on existing corpus")
     parser.add_argument("--resume", action="store_true",
                         help="Skip fetchers that already have a saved checkpoint")
+    parser.add_argument("--gdelt-window-days", type=int, default=90,
+                        help="GDELT REST window size in days (30 = 3x density)")
     args = parser.parse_args()
 
     start_date = args.start
@@ -465,7 +467,10 @@ def main() -> None:
             else:
                 logger.info("[3/3] GDELT Project fetcher (this takes ~40-60 min)...")
                 from app.ml.corpus.gdelt_fetcher import fetch_gdelt_articles
-                gdelt = fetch_gdelt_articles(start_date, end_date)
+                gdelt = fetch_gdelt_articles(
+                    start_date, end_date,
+                    window_days=args.gdelt_window_days,
+                )
                 for r in gdelt:
                     r.setdefault("fetcher_source", "gdelt")
                 _save_checkpoint("gdelt", gdelt)
