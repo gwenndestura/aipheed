@@ -284,12 +284,27 @@ def _load_checkpoint(source: str) -> list[dict] | None:
     return None
 
 
-def _clear_checkpoints() -> None:
-    """Remove all checkpoint files after a successful full run."""
-    if CHECKPOINT_DIR.exists():
-        for f in CHECKPOINT_DIR.glob("*.parquet"):
+def _clear_checkpoints(sources: list[str]) -> None:
+    """
+    Remove only the checkpoint files belonging to the sources processed in
+    THIS run. A parallel fetch-only process may be writing checkpoints for
+    other sources (e.g. gnews_rss years) — those must survive. The XLM-R
+    score cache (xlmr_scores.parquet) is never cleared: it is keyed by
+    article_id and lets any future run skip re-scoring.
+    """
+    if not CHECKPOINT_DIR.exists():
+        return
+    patterns: list[str] = []
+    if "gnews_rss" in sources:
+        patterns.append("gnews_rss_*.parquet")
+    if "rss" in sources:
+        patterns.append("rss.parquet")
+    if "gdelt" in sources:
+        patterns.append("gdelt.parquet")
+    for pat in patterns:
+        for f in CHECKPOINT_DIR.glob(pat):
             f.unlink()
-        logger.info("Checkpoints cleared.")
+            logger.info("Checkpoint cleared: %s", f.name)
 
 
 def _dedup_against_existing(new_records: list[dict], existing_df: pd.DataFrame) -> list[dict]:
@@ -385,8 +400,8 @@ def main() -> None:
     parser.add_argument("--end", default="2025-12-31")
     parser.add_argument(
         "--sources", nargs="+",
-        choices=["gnews_rss", "rss", "gdelt"],
-        default=["gnews_rss", "rss", "gdelt"],
+        choices=["gnews_rss", "rss", "gdelt", "gdelt_bq"],
+        default=["gnews_rss", "rss", "gdelt", "gdelt_bq"],
         help="Which fetchers to run (default: all)",
     )
     parser.add_argument("--no-classify", action="store_true",
@@ -416,6 +431,19 @@ def main() -> None:
     all_new: list[dict] = []
 
     if not args.classify_only:
+        # ── 0. GDELT BigQuery (pre-harvested by scripts/gdelt_bigquery_harvest.py)
+        if "gdelt_bq" in args.sources:
+            bq_path = Path("data/raw/gdelt_bigquery.parquet")
+            if bq_path.exists():
+                bq = pd.read_parquet(bq_path).to_dict(orient="records")
+                logger.info("[0/4] GDELT BigQuery harvest: %d articles", len(bq))
+                all_new += bq
+            else:
+                logger.warning(
+                    "gdelt_bq requested but %s missing — run "
+                    "scripts/gdelt_bigquery_harvest.py first; skipping.", bq_path,
+                )
+
         # ── 1. Google News RSS (monthly windows, checkpointed per year) ──
         if "gnews_rss" in args.sources:
             logger.info("[1/4] Google News RSS fetcher (monthly windows)...")
@@ -564,7 +592,7 @@ def main() -> None:
 
     new_df.to_parquet(EXPANDED_PATH, index=False)
     logger.info("Saved new articles only → %s (%d articles)", EXPANDED_PATH, len(new_df))
-    _clear_checkpoints()
+    _clear_checkpoints(args.sources)
 
     # ── Save geocoded ─────────────────────────────────────────────────────
     GEOCODED_PATH.parent.mkdir(parents=True, exist_ok=True)
