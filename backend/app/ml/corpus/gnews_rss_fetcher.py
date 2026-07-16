@@ -768,15 +768,21 @@ def _report_throttle() -> None:
     """Record a 503/429 and extend the shared cooldown."""
     global _throttle_until, _throttle_level
     with _throttle_lock:
+        now = time.time()
+        # 503s from requests that were already in flight when a cooldown
+        # began must not escalate further — a single burst across N workers
+        # would otherwise jump N levels in one moment. Only a 503 that
+        # arrives AFTER the current cooldown expired proves the previous
+        # pause was insufficient and justifies escalating.
+        if now < _throttle_until:
+            return
         _throttle_level = min(_throttle_level + 1, 5)
         cooldown = min(60.0 * (2 ** (_throttle_level - 1)), 600.0)
-        new_until = time.time() + cooldown
-        if new_until > _throttle_until:
-            _throttle_until = new_until
-            logger.warning(
-                "Google News throttling detected (503/429) — pausing all "
-                "workers %.0fs (level %d)", cooldown, _throttle_level,
-            )
+        _throttle_until = now + cooldown
+        logger.warning(
+            "Google News throttling detected (503/429) — pausing all "
+            "workers %.0fs (level %d)", cooldown, _throttle_level,
+        )
 
 
 def _report_success() -> None:
