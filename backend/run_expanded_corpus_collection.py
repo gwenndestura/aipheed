@@ -308,6 +308,74 @@ def _dedup_against_existing(new_records: list[dict], existing_df: pd.DataFrame) 
 
 
 # ---------------------------------------------------------------------------
+# Zero-shot XLM-RoBERTa scoring (thesis §3.3.2) with resumable checkpoints
+# ---------------------------------------------------------------------------
+
+SCORE_CKPT = CHECKPOINT_DIR / "xlmr_scores.parquet"
+
+
+def _score_with_xlmr(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Score every article with the XLM-RoBERTa zero-shot classifier and merge
+    the results back onto df. Checkpoints every 200 articles so a long run
+    can resume with --resume semantics (scored articles are never re-scored).
+
+    Raises RuntimeError if the transformer fails to load — the approved
+    methodology requires contextual NLI scoring, so we refuse to silently
+    degrade to the keyword fallback for corpus construction.
+    """
+    from app.ml.nlp.classifier import load_classifier, score_article
+
+    clf = load_classifier()
+    if clf.mode != "xlm-roberta":
+        raise RuntimeError(
+            "XLM-RoBERTa zero-shot pipeline failed to load. Corpus relevance "
+            "must use contextual NLI scoring (thesis §3.3.2), not the keyword "
+            "fallback. Check torch/transformers installation and disk space "
+            "for the model download, then re-run."
+        )
+
+    done: dict[str, dict] = {}
+    if SCORE_CKPT.exists():
+        ck = pd.read_parquet(SCORE_CKPT)
+        done = {r["article_id"]: r for r in ck.to_dict("records")}
+        logger.info("Score checkpoint found: %d articles already scored", len(done))
+
+    rows: list[dict] = []
+    total = len(df)
+    since_save = 0
+    for i, rec in enumerate(df.to_dict("records"), 1):
+        aid = rec["article_id"]
+        if aid in done:
+            rows.append(done[aid])
+            continue
+        s = score_article(clf, str(rec.get("title") or ""), str(rec.get("summary") or ""))
+        rows.append({
+            "article_id": aid,
+            "food_insecurity_score": s["food_insecurity_score"],
+            "is_relevant": bool(s["is_relevant"]),
+            "top_hypothesis": s["top_hypothesis"],
+            "top_topic_name": s["top_topic_name"],
+        })
+        since_save += 1
+        if since_save >= 200:
+            CHECKPOINT_DIR.mkdir(parents=True, exist_ok=True)
+            pd.DataFrame(rows).to_parquet(SCORE_CKPT, index=False)
+            since_save = 0
+            relevant_so_far = sum(1 for r in rows if r["is_relevant"])
+            logger.info(
+                "  scored %d/%d (%.1f%%) — %d relevant so far",
+                i, total, i / total * 100, relevant_so_far,
+            )
+
+    CHECKPOINT_DIR.mkdir(parents=True, exist_ok=True)
+    scores_df = pd.DataFrame(rows)
+    scores_df.to_parquet(SCORE_CKPT, index=False)
+
+    return df.merge(scores_df, on="article_id", how="left")
+
+
+# ---------------------------------------------------------------------------
 # Main
 # ---------------------------------------------------------------------------
 
@@ -421,28 +489,37 @@ def main() -> None:
         if col not in new_df.columns:
             new_df[col] = None
 
-    # ── Anthropic Claude classification ───────────────────────────────────
+    # ── Zero-shot XLM-RoBERTa relevance scoring (thesis §3.3.2) ──────────
+    # Contextual NLI entailment against the 10 bilingual HungerGist
+    # hypotheses — relevance is judged from the article's meaning, not
+    # keyword presence. Articles below RELEVANCE_THRESHOLD (0.30) are
+    # excluded from the corpus.
     if not args.no_classify:
-        logger.info("Running Anthropic Claude food insecurity classification...")
-        from app.ml.corpus.anthropic_classifier import classify_food_relevance
-        new_df = classify_food_relevance(new_df)
+        logger.info(
+            "Running XLM-RoBERTa zero-shot relevance scoring "
+            "(joeddav/xlm-roberta-large-xnli, 10 HungerGist hypotheses)..."
+        )
+        new_df = _score_with_xlmr(new_df)
 
         before = len(new_df)
-        # Keep only relevant (score >= 2) articles
-        new_df = new_df[new_df["claude_fi_relevant"] != "N"].copy()
+        new_df = new_df[new_df["is_relevant"]].copy()
         logger.info(
-            "After Claude filter: %d/%d articles kept (%.1f%%)",
+            "After relevance filter (score >= 0.30): %d/%d articles kept (%.1f%%)",
             len(new_df), before, len(new_df) / before * 100 if before else 0,
         )
     else:
-        logger.info("Skipping Claude classification (--no-classify flag set)")
+        logger.info("Skipping relevance scoring (--no-classify flag set)")
 
     # ── Geocode new articles ──────────────────────────────────────────────
+    # Three-stage PSGC matching (alias table → exact substring → fuzzy) on
+    # the full title + summary text, not the title alone.
     logger.info("Geocoding new articles to CALABARZON provinces...")
     from app.ml.corpus.geocoder import geocode_to_province
-    new_df["province_code"] = new_df["title"].apply(
-        lambda t: geocode_to_province(str(t or ""))
-    )
+    new_df["province_code"] = (
+        new_df["title"].fillna("").astype(str)
+        + ". "
+        + new_df["summary"].fillna("").astype(str)
+    ).apply(geocode_to_province)
 
     # Add quarter column
     def _to_quarter(pub: str) -> str:

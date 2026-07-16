@@ -686,6 +686,22 @@ _DOMAIN_TARGETED: list[str] = (
 )
 
 # ---------------------------------------------------------------------------
+# Per-LGU queries — all 147 CALABARZON municipalities and cities.
+# Reuses CALABARZON_LGUS from gdelt_fetcher so both sources share one roster,
+# guaranteeing no LGU is silently uncovered (mirrors the GDELT strategy).
+# Three variants per LGU: market/prices (EN), relief/hunger (EN), Filipino.
+# ---------------------------------------------------------------------------
+
+from app.ml.corpus.gdelt_fetcher import CALABARZON_LGUS
+
+_LGU_QUERIES: list[str] = []
+for _prov, _lgu_list in CALABARZON_LGUS.items():
+    for _lgu in _lgu_list:
+        _LGU_QUERIES.append(f'"{_lgu}" {_prov} food prices')
+        _LGU_QUERIES.append(f'"{_lgu}" {_prov} ayuda hunger relief')
+        _LGU_QUERIES.append(f'"{_lgu}" presyo bigas pagkain')
+
+# ---------------------------------------------------------------------------
 # Master query list — all groups combined
 # ---------------------------------------------------------------------------
 
@@ -708,6 +724,7 @@ GNEWS_RSS_QUERIES: list[str] = (
     + _CALABARZON_CITIES
     + _HUNGERGIST_SOCIAL
     + _DOMAIN_TARGETED        # site:-specific queries for all 26 credible domains
+    + _LGU_QUERIES            # 3 query variants × all 147 CALABARZON LGUs
 )
 
 

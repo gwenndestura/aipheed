@@ -135,29 +135,44 @@ class _KeywordClassifier:
 
 
 class _XLMRobertaClassifier:
-    """Wraps the transformers zero-shot-classification pipeline."""
+    """
+    Direct NLI scoring: article text as premise, each HungerGist hypothesis
+    as hypothesis, score = P(entailment) from the 3-way XNLI softmax
+    (contradiction / neutral / entailment).
+
+    This is the "maximum entailment probability" defined in the methodology.
+    The zero-shot pipeline's multi_label mode is deliberately NOT used: it
+    renormalises entailment against contradiction only, which inflates
+    off-topic text (a sports article can score >0.8) and breaks the 0.30
+    relevance threshold. Raw P(entailment) separates cleanly.
+    """
     mode = "xlm-roberta"
 
-    def __init__(self, pipeline):
-        self._pipeline = pipeline
+    def __init__(self, model, tokenizer, entailment_idx: int):
+        self._model = model
+        self._tok = tokenizer
+        self._ent_idx = entailment_idx
 
     def classify(self, text: str) -> list[dict]:
-        """Run NLI inference for all hypotheses on text."""
-        hypotheses_list = list(HYPOTHESES.values())
-        result = self._pipeline(
-            text,
-            candidate_labels=hypotheses_list,
-            multi_label=True,
-            hypothesis_template="{}",
+        """Run NLI inference for all 10 hypotheses in one batched forward pass."""
+        import torch
+
+        topic_ids = list(HYPOTHESES.keys())
+        hypotheses = list(HYPOTHESES.values())
+        enc = self._tok(
+            [text] * len(hypotheses),
+            hypotheses,
+            return_tensors="pt",
+            truncation=True,
+            max_length=512,
+            padding=True,
         )
-        # Map back from hypothesis text → topic_id
-        text_to_id = {v: k for k, v in HYPOTHESES.items()}
+        with torch.no_grad():
+            logits = self._model(**enc).logits
+        probs = torch.softmax(logits, dim=-1)[:, self._ent_idx]
         return [
-            {
-                "topic_id": text_to_id.get(lbl, lbl),
-                "score": float(sc),
-            }
-            for lbl, sc in zip(result["labels"], result["scores"])
+            {"topic_id": tid, "score": float(p)}
+            for tid, p in zip(topic_ids, probs)
         ]
 
 
@@ -177,19 +192,25 @@ def load_classifier() -> Any:
         return _KeywordClassifier()
 
     try:
-        from transformers import pipeline as hf_pipeline
+        from transformers import AutoModelForSequenceClassification, AutoTokenizer
 
         logger.info(
-            "load_classifier: loading XLM-RoBERTa zero-shot pipeline (%s)...", MODEL_NAME
+            "load_classifier: loading XLM-RoBERTa NLI model (%s)...", MODEL_NAME
         )
-        pipe = hf_pipeline(
-            "zero-shot-classification",
-            model=MODEL_NAME,
-            device=-1,            # CPU; change to 0 for CUDA
-            multi_label=True,
+        tokenizer = AutoTokenizer.from_pretrained(MODEL_NAME)
+        model = AutoModelForSequenceClassification.from_pretrained(MODEL_NAME)
+        model.eval()
+
+        label_to_idx = {
+            str(lbl).lower(): int(idx)
+            for idx, lbl in model.config.id2label.items()
+        }
+        entailment_idx = label_to_idx.get("entailment", 2)
+
+        clf = _XLMRobertaClassifier(model, tokenizer, entailment_idx)
+        logger.info(
+            "load_classifier: XLM-RoBERTa ready (entailment index %d).", entailment_idx
         )
-        clf = _XLMRobertaClassifier(pipe)
-        logger.info("load_classifier: XLM-RoBERTa ready.")
         return clf
 
     except Exception as exc:
