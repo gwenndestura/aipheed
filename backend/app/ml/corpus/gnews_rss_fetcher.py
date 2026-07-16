@@ -39,6 +39,7 @@ Usage:
 from __future__ import annotations
 
 import logging
+import os
 import random
 import threading
 import time
@@ -59,14 +60,14 @@ logger = logging.getLogger(__name__)
 
 GNEWS_RSS_BASE = "https://news.google.com/rss/search"
 
-# Polite delay between Google News requests (seconds) — per worker thread
-GNEWS_CRAWL_DELAY = 1.5
+# Polite delay between Google News requests (seconds) — per worker thread.
+# Overridable via env for per-machine tuning without code edits.
+# Observed limits: ~2 req/s sustained gets 503-blocked within ~800 requests;
+# blocks re-establish within minutes even after an IP change. Default to a
+# conservative ~0.7 req/s aggregate.
+GNEWS_CRAWL_DELAY = float(os.getenv("AIPHEED_GNEWS_DELAY", "2.5"))
 
-# Concurrent workers: keep the aggregate rate near ~2 req/s. Google News
-# starts returning 503 (bot detection) when hammered — observed at 4-6
-# workers × 1s after a few thousand rapid requests. Slow and steady wins:
-# a throttled IP collects zero.
-GNEWS_MAX_WORKERS = 3
+GNEWS_MAX_WORKERS = int(os.getenv("AIPHEED_GNEWS_WORKERS", "2"))
 
 # ---------------------------------------------------------------------------
 # 1. National food/price queries (English)
