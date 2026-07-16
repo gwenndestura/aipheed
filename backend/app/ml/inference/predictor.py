@@ -65,6 +65,25 @@ FEATURE_COLS = [
 
 DATA_SUFFICIENCY_MIN_ARTICLES = 5
 
+# ---------------------------------------------------------------------------
+# Alert thresholds — sudden-rise detection
+# ---------------------------------------------------------------------------
+# An alert is staged when BOTH conditions are true:
+#   1. risk_probability rose by >= ALERT_DELTA_THRESHOLD from the previous quarter
+#   2. current risk_probability >= ALERT_FLOOR
+#
+# Rationale for 0.15 delta:
+#   A 15-point quarter-on-quarter jump represents a fast deterioration in the
+#   model's predicted risk — the signal that DSWD needs to act on early.
+#   Flat or slowly rising probabilities are informational, not urgent.
+#
+# Rationale for 0.35 floor:
+#   Prevents noise alerts from very-low-risk provinces (e.g. 0.05 → 0.21 is
+#   a big jump but still a low absolute risk).  0.35 is below the historical
+#   median risk (≈0.54 baseline) but above the noise floor.
+ALERT_DELTA_THRESHOLD: float = 0.15   # minimum quarter-on-quarter rise
+ALERT_FLOOR: float = 0.35             # minimum current probability for alert to fire
+
 
 class Predictor:
     """
@@ -145,6 +164,7 @@ class Predictor:
         for i, (_, row) in enumerate(df.iterrows()):
             province_code = row["province_code"]
             prob = float(proba[i])
+            # Display label only — alerts use detect_alerts() delta logic, not this
             risk_label = "HIGH" if prob >= 0.5 else "LOW"
 
             # Check data sufficiency
@@ -165,6 +185,57 @@ class Predictor:
             "forecast_quarter(%s): %d provinces forecast", quarter, len(results)
         )
         return results
+
+    def detect_alerts(
+        self,
+        current_forecasts: list[dict],
+        prev_forecasts: list[dict],
+    ) -> list[dict]:
+        """
+        Compare current quarter forecasts against the previous quarter and
+        return alert dicts for provinces with a sudden rise.
+
+        A sudden rise is defined as:
+            risk_delta >= ALERT_DELTA_THRESHOLD  (>= 0.15 points)
+            AND current risk_probability >= ALERT_FLOOR  (>= 0.35)
+
+        Parameters
+        ----------
+        current_forecasts : list[dict]  — output of forecast_quarter() for this quarter
+        prev_forecasts    : list[dict]  — output of forecast_quarter() for last quarter
+                                         (or DB records cast to dicts)
+
+        Returns
+        -------
+        list[dict] — one dict per triggered province, ready for AlertRepository.insert()
+            keys: quarter, province_code, threshold_exceeded,
+                  prev_risk_probability, risk_delta, alert_reason
+        """
+        prev_map = {f["province_code"]: f.get("risk_probability", 0.0) for f in prev_forecasts}
+
+        alerts = []
+        for fc in current_forecasts:
+            province_code = fc["province_code"]
+            current_prob  = fc["risk_probability"]
+            prev_prob     = prev_map.get(province_code, 0.0)
+            delta         = round(current_prob - prev_prob, 4)
+
+            if delta >= ALERT_DELTA_THRESHOLD and current_prob >= ALERT_FLOOR:
+                alerts.append({
+                    "quarter":               fc["quarter"],
+                    "province_code":         province_code,
+                    "threshold_exceeded":    True,
+                    "prev_risk_probability": round(prev_prob, 4),
+                    "risk_delta":            delta,
+                    "alert_reason":          "SUDDEN_RISE",
+                })
+                logger.info(
+                    "ALERT staged — %s | %s | prob %.3f → %.3f (Δ=%.3f)",
+                    fc["quarter"], fc.get("province_name", province_code),
+                    prev_prob, current_prob, delta,
+                )
+
+        return alerts
 
     def forecast_all_quarters(self) -> list[dict]:
         """Forecast all quarters present in the feature matrix."""

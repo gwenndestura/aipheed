@@ -305,7 +305,7 @@ def run_baseline_evaluation(
     labels_path: Path = LABELS_PATH,
     output_path: Path = OUTPUT_PATH,
     min_train_quarters: int = 8,
-    forecast_gap: int = 3,
+    forecast_gap: int | None = None,
     best_params: dict | None = None,
 ) -> dict:
     """
@@ -329,9 +329,20 @@ def run_baseline_evaluation(
     labels_path         : path to labels.parquet
     output_path         : where to save eval_results.json
     min_train_quarters  : minimum quarters in first training fold (default 8)
-    forecast_gap        : quarters between end of training and test quarter (default 3)
+    forecast_gap        : quarters between end of training and test quarter.
+                          MUST be passed from train_model()["max_reliable_lead_time"].
+                          The forecast gap is no longer fixed — it is the empirically
+                          discovered maximum reliable lead time (Accuracy >= 75%).
+                          Raises ValueError if not provided.
     best_params         : best Optuna hyperparameters from trainer.py (dict or None)
     """
+    if forecast_gap is None:
+        raise ValueError(
+            "forecast_gap must be provided explicitly. "
+            "Pass train_model()['max_reliable_lead_time'] so baselines are evaluated "
+            "at the same empirically discovered horizon as the LightGBM model. "
+            "The forecast gap is no longer fixed at 3 quarters."
+        )
     df = _load_merged(features_path, labels_path)
     splitter = WalkForwardSplitter(
         min_train_quarters=min_train_quarters,
@@ -423,9 +434,14 @@ def run_baseline_evaluation(
         },
         "baselines": {},
         "target_metrics": {
-            "lightgbm_weighted_f1_target": 0.75,
-            "lightgbm_roc_auc_target":     0.80,
-            "note": "LightGBM results added by trainer.py",
+            "lightgbm_weighted_f1_target":   0.75,
+            "lightgbm_roc_auc_target":       0.80,
+            "accuracy_reliability_threshold": 0.75,
+            "note": (
+                "forecast_gap is the empirically discovered Maximum Reliable Lead Time "
+                "from trainer.discover_max_lead_time() — not a fixed assumption. "
+                "LightGBM results added by trainer.py."
+            ),
         },
     }
 

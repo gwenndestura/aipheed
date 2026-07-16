@@ -58,7 +58,19 @@ class MunicipalForecastRecord(Base):
 class SHAPRecord(Base):
     """
     Stores SHAP feature importance values.
-    One row per feature per province per quarter.
+    One row per feature per province per quarter (45 features × 5 provinces).
+
+    New fields (v2):
+      display_name   — human-readable label for the dashboard waterfall.
+      feature_group  — driver category: market | climate | employment |
+                       macro_ofw | nlp
+      feature_value  — actual input value fed to the model (for tooltip).
+      unit           — display unit string (e.g. "% change", "PHP/kg").
+      baseline       — SHAP expected value (mean training prob ≈ 0.54).
+                       Same for every row in the same model version;
+                       stored per-row for convenience.
+      final_rfii     — baseline + sum(shap_values) ≈ predicted risk_probability.
+                       Same for all rows of the same province-quarter.
     """
     __tablename__ = "shap_records"
 
@@ -69,16 +81,66 @@ class SHAPRecord(Base):
     shap_value = Column(Float, nullable=False)
     mean_abs_shap = Column(Float, nullable=False)
 
+    # v2 display fields
+    display_name = Column(String, nullable=True)
+    feature_group = Column(String, nullable=True)
+    feature_value = Column(Float, nullable=True)
+    unit = Column(String, nullable=True)
+    baseline = Column(Float, nullable=True)
+    final_rfii = Column(Float, nullable=True)
+
     __table_args__ = (
         Index("ix_shap_quarter_province", "quarter", "province_code"),
+    )
+
+
+class DriverRecord(Base):
+    """
+    Stores grouped SHAP driver contributions.
+    One row per driver group per province per quarter (5 groups × 5 provinces).
+
+    Drives the left-panel "RISK DRIVERS" ranked bar chart and the
+    trigger composition stacked bar.
+    """
+    __tablename__ = "driver_records"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    quarter = Column(String, nullable=False)
+    province_code = Column(String, nullable=False)
+
+    # Raw group key: market | climate | employment | macro_ofw | nlp_sentiment
+    driver_group = Column(String, nullable=False)
+
+    # Human-readable label (e.g. "Market / Prices")
+    driver_label = Column(String, nullable=False)
+
+    # Net SHAP contribution (probability scale, e.g. +0.354)
+    group_shap = Column(Float, nullable=False)
+
+    # "increases_risk" or "protective"
+    direction = Column(String, nullable=False)
+
+    # Bar width percentage (abs(group_shap) / total_abs_shap * 100)
+    display_pct = Column(Float, nullable=False)
+
+    # NLP news signal proportion from trigger_proportions.parquet (0.0–1.0)
+    trigger_proportion = Column(Float, nullable=True)
+
+    # Number of NLP articles analysed (stored on the market group row,
+    # NULL on others — use max() when querying)
+    article_count = Column(Integer, nullable=True)
+
+    __table_args__ = (
+        Index("ix_driver_quarter_province", "quarter", "province_code"),
     )
 
 
 class AlertRecord(Base):
     """
     Stores early warning alerts.
-    Requires human admin confirmation before publication.
-    confirmed=False until DSWD admin explicitly confirms.
+    States: STAGED (confirmed=False, dismissed=False)
+            CONFIRMED (confirmed=True)  — published to dashboard
+            DISMISSED (dismissed=True)  — suppressed, kept for audit only
     """
     __tablename__ = "alert_records"
 
@@ -87,6 +149,11 @@ class AlertRecord(Base):
     province_code = Column(String, nullable=False)
     threshold_exceeded = Column(Boolean, nullable=False, default=False)
     confirmed = Column(Boolean, nullable=False, default=False)
+    dismissed = Column(Boolean, nullable=False, default=False)
+    # Sudden-rise detection fields
+    prev_risk_probability = Column(Float, nullable=True)   # previous quarter's probability
+    risk_delta = Column(Float, nullable=True)              # current − previous probability
+    alert_reason = Column(String, nullable=True)           # e.g. "SUDDEN_RISE"
     created_at = Column(DateTime, server_default=func.now())
 
     __table_args__ = (

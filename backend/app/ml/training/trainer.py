@@ -4,12 +4,17 @@ app/ml/training/trainer.py
 LightGBM training with Walk-Forward Expanding-Window Cross-Validation.
 
 Walk-Forward CV is MANDATORY for time-series data.
-With forecast_gap=3, fold k trains on the first k quarters and tests on the
-quarter that is 3 positions ahead — matching real deployment (predict 3 quarters
-into the future based on current data).
+The forecast gap is NOT fixed. discover_max_lead_time() iterates k = 1, 2, 3 ...
+and halts at the first k where mean walk-forward Accuracy drops below
+ACCURACY_THRESHOLD (75%). The last passing k becomes the Operationally Valid
+Forecast Horizon used for the Optuna search and production model.
+
+This directly answers Research Question 2:
+  "What is the furthest lead time at which aiPHeed can reliably forecast
+   province-level food insecurity risk across CALABARZON?"
 
 Overfitting controls:
-  - forecast_gap=3   : no intermediate-quarter leakage into the training window
+  - dynamic forecast_gap   : empirically discovered, no look-ahead leakage
   - HOLDOUT_QUARTERS : last N quarters never seen during Optuna search; used for
                        the final honest out-of-sample evaluation
   - class_weight="balanced" : counters class imbalance without hand-tuning
@@ -19,6 +24,7 @@ Overfitting controls:
 Usage:
     from app.ml.training.trainer import train_model
     result = train_model()
+    print(result["max_reliable_lead_time"])  # e.g. 3
 """
 
 import logging
@@ -76,9 +82,14 @@ QUARTER_COL  = "quarter"
 # ── Training configuration ────────────────────────────────────────────────────
 N_TRIALS           = 100
 RANDOM_SEED        = 42
-FORECAST_GAP       = 3   # quarters between end of training window and test quarter
 HOLDOUT_QUARTERS   = 4   # last N quarters withheld from Optuna; used for final eval
 MIN_TRAIN_QUARTERS = 8   # minimum training window for the first CV fold
+
+# ── Lead time discovery configuration ────────────────────────────────────────
+# FORECAST_GAP is no longer a fixed constant. discover_max_lead_time() iterates
+# k = 1 .. MAX_LEAD_QUARTERS and returns the furthest k where Accuracy >= threshold.
+ACCURACY_THRESHOLD  = 0.75   # reliable forecasting standard (75%)
+MAX_LEAD_QUARTERS   = 8      # upper bound for the lead-time search
 
 # ── Performance targets ───────────────────────────────────────────────────────
 TARGET_F1      = 0.75
@@ -129,10 +140,152 @@ def _load_data() -> tuple[pd.DataFrame, pd.Series, pd.Series]:
     return X, y, quarters
 
 
+def discover_max_lead_time(
+    X: pd.DataFrame,
+    y: pd.Series,
+    quarters: pd.Series,
+) -> int:
+    """
+    Empirically identify the furthest lead time k where mean walk-forward
+    Accuracy >= ACCURACY_THRESHOLD (75%).
+
+    Strategy
+    --------
+    Uses a fast default LightGBM (no Optuna) to scan k = 1, 2, ... MAX_LEAD_QUARTERS.
+    For each k, walk-forward CV is run and mean Accuracy is computed across folds.
+    The loop halts at the first k where mean Accuracy < ACCURACY_THRESHOLD.
+    The last k that passed the threshold is returned as the Operationally Valid
+    Forecast Horizon used for the full Optuna training run.
+
+    This directly answers Research Question 2:
+      "What is the furthest lead time at which aiPHeed can reliably forecast
+       province-level food insecurity risk across CALABARZON?"
+
+    Returns
+    -------
+    int : max reliable lead time in quarters (minimum 1).
+    """
+    logger.info("=" * 60)
+    logger.info(
+        "LEAD TIME DISCOVERY — Accuracy threshold: %.0f%% | Max search: %d quarters",
+        ACCURACY_THRESHOLD * 100, MAX_LEAD_QUARTERS,
+    )
+    logger.info("=" * 60)
+
+    # Default params for the discovery scan — fast, no Optuna overhead.
+    discovery_params = {
+        "objective":     "binary",
+        "verbosity":     -1,
+        "boosting_type": "gbdt",
+        "random_state":  RANDOM_SEED,
+        "class_weight":  "balanced",
+        "n_estimators":  200,
+        "learning_rate": 0.05,
+        "num_leaves":    63,
+        "max_depth":     6,
+    }
+
+    df_quarters = pd.DataFrame(
+        {QUARTER_COL: quarters.values},
+        index=X.index,
+    )
+
+    k_max = 1  # fallback: at minimum, 1-quarter-ahead is always reported
+
+    for k in range(1, MAX_LEAD_QUARTERS + 1):
+        splitter = WalkForwardSplitter(
+            min_train_quarters=MIN_TRAIN_QUARTERS,
+            forecast_gap=k,
+        )
+
+        try:
+            n_folds = splitter.get_n_splits(df_quarters)
+        except ValueError:
+            logger.info("k=%d: not enough quarters for gap=%d. Stopping search.", k, k)
+            break
+
+        if n_folds < 2:
+            logger.info("k=%d: only %d fold(s) — insufficient for reliable estimate. Stopping.", k, n_folds)
+            break
+
+        fold_metrics: dict[str, list[float]] = {
+            "accuracy":  [],
+            "precision": [],
+            "recall":    [],
+            "f1":        [],
+            "roc_auc":   [],
+        }
+
+        for train_idx, test_idx in splitter.split(df_quarters):
+            if len(train_idx) < 5 or len(test_idx) < 1:
+                continue
+
+            y_train = y.loc[train_idx]
+            y_test  = y.loc[test_idx]
+
+            model = LGBMClassifier(**discovery_params)
+            model.fit(X.loc[train_idx], y_train)
+            y_pred  = model.predict(X.loc[test_idx])
+            y_proba = model.predict_proba(X.loc[test_idx])[:, 1]
+
+            fold_metrics["accuracy"].append(accuracy_score(y_test, y_pred))
+            fold_metrics["precision"].append(
+                precision_score(y_test, y_pred, average="weighted", zero_division=0)
+            )
+            fold_metrics["recall"].append(
+                recall_score(y_test, y_pred, average="weighted", zero_division=0)
+            )
+            fold_metrics["f1"].append(
+                f1_score(y_test, y_pred, average="weighted", zero_division=0)
+            )
+            if y_test.nunique() > 1:
+                fold_metrics["roc_auc"].append(roc_auc_score(y_test, y_proba))
+
+        if not fold_metrics["accuracy"]:
+            logger.info("k=%d: no valid folds produced. Stopping.", k)
+            break
+
+        mean_acc       = float(np.mean(fold_metrics["accuracy"]))
+        mean_precision = float(np.mean(fold_metrics["precision"])) if fold_metrics["precision"] else float("nan")
+        mean_recall    = float(np.mean(fold_metrics["recall"]))    if fold_metrics["recall"]    else float("nan")
+        mean_f1        = float(np.mean(fold_metrics["f1"]))        if fold_metrics["f1"]        else float("nan")
+        mean_auc       = float(np.mean(fold_metrics["roc_auc"]))   if fold_metrics["roc_auc"]   else float("nan")
+        passed         = mean_acc >= ACCURACY_THRESHOLD
+
+        logger.info(
+            "k=%-2d | Accuracy=%.4f | Precision=%.4f | Recall=%.4f | "
+            "F1=%.4f | AUC-ROC=%.4f | %s",
+            k, mean_acc, mean_precision, mean_recall, mean_f1, mean_auc,
+            "PASS  (>= 75%)" if passed else "FAIL  (< 75%) — HALTING",
+        )
+
+        if passed:
+            k_max = k
+        else:
+            logger.info(
+                "Accuracy fell below %.0f%% at k=%d. "
+                "Maximum Reliable Lead Time = %d quarter(s) ahead.",
+                ACCURACY_THRESHOLD * 100, k, k_max,
+            )
+            break
+    else:
+        logger.info(
+            "All lead times up to k=%d passed the threshold. "
+            "Maximum Reliable Lead Time = %d quarter(s) ahead.",
+            MAX_LEAD_QUARTERS, k_max,
+        )
+
+    logger.info("=" * 60)
+    logger.info("OPERATIONALLY VALID FORECAST HORIZON: %d quarter(s)", k_max)
+    logger.info("=" * 60)
+    return k_max
+
+
 def _make_objective(
     X_cv: pd.DataFrame,
     y_cv: pd.Series,
     df_cv: pd.DataFrame,
+    forecast_gap: int = 1,
 ) -> callable:
     """
     Build Optuna objective using Walk-Forward CV on the CV window only.
@@ -166,7 +319,7 @@ def _make_objective(
 
         splitter = WalkForwardSplitter(
             min_train_quarters=MIN_TRAIN_QUARTERS,
-            forecast_gap=FORECAST_GAP,
+            forecast_gap=forecast_gap,
         )
         fold_f1_scores  = []
         fold_auc_scores = []
@@ -208,29 +361,41 @@ def train_model() -> dict:
     """
     Full training pipeline:
     1.  Load features_fused.parquet + labels.parquet
-    2.  Reserve last HOLDOUT_QUARTERS as a true out-of-sample test set
-    3.  Run Optuna 100-trial walk-forward search on the CV window only
-    4.  Evaluate the best params on the holdout window (honest final metrics)
-    5.  Retrain production model on ALL data with best params
-    6.  Serialize lgbm_best.pkl and optuna_study.pkl
-    7.  Log with MLflow
+    2.  Discover maximum reliable lead time (Accuracy >= 75% threshold)
+    3.  Reserve last HOLDOUT_QUARTERS as a true out-of-sample test set
+    4.  Run Optuna 100-trial walk-forward search on the CV window only
+        using the empirically discovered forecast gap
+    5.  Evaluate the best params on the holdout window (honest final metrics)
+    6.  Retrain production model on ALL data with best params
+    7.  Serialize lgbm_best.pkl and optuna_study.pkl
+    8.  Log with MLflow including max_reliable_lead_time
 
     Returns:
-        dict with best_params, best_cv_f1, holdout_f1, holdout_roc_auc
+        dict with best_params, best_cv_f1, holdout metrics,
+        and max_reliable_lead_time (the answer to Research Question 2).
     """
     logger.info("=" * 60)
-    logger.info(
-        "LIGHTGBM TRAINING — WALK-FORWARD CV (gap=%d, holdout=%d quarters)",
-        FORECAST_GAP, HOLDOUT_QUARTERS,
-    )
+    logger.info("LIGHTGBM TRAINING PIPELINE — aiPHeed")
     logger.info("=" * 60)
 
     X, y, quarters = _load_data()
 
+    # ── Step 1: Empirically discover maximum reliable lead time ──────────
+    # This removes the fixed FORECAST_GAP=3 assumption and answers:
+    # "What is the furthest lead time at which aiPHeed can reliably forecast
+    #  province-level food insecurity risk across CALABARZON?"
+    max_reliable_lead_time = discover_max_lead_time(X, y, quarters)
+    forecast_gap = max_reliable_lead_time
+
+    logger.info(
+        "LIGHTGBM TRAINING — WALK-FORWARD CV (gap=%d, holdout=%d quarters)",
+        forecast_gap, HOLDOUT_QUARTERS,
+    )
+
     # ── Split CV window from holdout ──────────────────────────────────────
     all_quarters = sorted(quarters.unique())
 
-    min_needed = MIN_TRAIN_QUARTERS + FORECAST_GAP + 1 + HOLDOUT_QUARTERS
+    min_needed = MIN_TRAIN_QUARTERS + forecast_gap + 1 + HOLDOUT_QUARTERS
     if len(all_quarters) < min_needed:
         raise ValueError(
             f"Not enough quarters for this configuration: need >= {min_needed}, "
@@ -263,7 +428,7 @@ def train_model() -> dict:
     # ── Optuna search on CV window only ──────────────────────────────────
     logger.info(
         "Starting Optuna: %d trials, walk-forward CV, gap=%d quarters",
-        N_TRIALS, FORECAST_GAP,
+        N_TRIALS, forecast_gap,
     )
     optuna.logging.set_verbosity(optuna.logging.WARNING)
 
@@ -273,7 +438,7 @@ def train_model() -> dict:
         sampler=optuna.samplers.TPESampler(seed=RANDOM_SEED),
     )
     study.optimize(
-        _make_objective(X_cv, y_cv, df_cv),
+        _make_objective(X_cv, y_cv, df_cv, forecast_gap=forecast_gap),
         n_trials=N_TRIALS,
         show_progress_bar=True,
     )
@@ -338,20 +503,27 @@ def train_model() -> dict:
     logger.info("Production model saved to %s", MODEL_PATH)
 
     # ── MLflow logging (best-effort; model already saved to disk) ────────
+    logger.info(
+        "ANSWER — Research Question 2: Maximum Reliable Lead Time = %d quarter(s) ahead "
+        "(furthest horizon where walk-forward Accuracy >= %.0f%%)",
+        max_reliable_lead_time, ACCURACY_THRESHOLD * 100,
+    )
+
     try:
         with mlflow.start_run(run_name="lgbm_aipheed"):
             mlflow.log_params(best_params)
-            mlflow.log_param("forecast_gap",      FORECAST_GAP)
-            mlflow.log_param("holdout_quarters",  HOLDOUT_QUARTERS)
-            mlflow.log_metric("best_cv_f1",       best_cv_f1)
-            mlflow.log_metric("holdout_accuracy", holdout_accuracy)
-            mlflow.log_metric("holdout_f1",       holdout_f1)
-            mlflow.log_metric("holdout_precision", holdout_precision)
-            mlflow.log_metric("holdout_recall",   holdout_recall)
+            mlflow.log_param("max_reliable_lead_time", max_reliable_lead_time)
+            mlflow.log_param("accuracy_threshold",     ACCURACY_THRESHOLD)
+            mlflow.log_param("holdout_quarters",       HOLDOUT_QUARTERS)
+            mlflow.log_metric("best_cv_f1",            best_cv_f1)
+            mlflow.log_metric("holdout_accuracy",      holdout_accuracy)
+            mlflow.log_metric("holdout_f1",            holdout_f1)
+            mlflow.log_metric("holdout_precision",     holdout_precision)
+            mlflow.log_metric("holdout_recall",        holdout_recall)
             # ROC-AUC may be NaN when holdout has a single class — skip in that case
             if not (holdout_auc != holdout_auc):  # NaN check
                 mlflow.log_metric("holdout_roc_auc", holdout_auc)
-            mlflow.log_metric("n_trials",         N_TRIALS)
+            mlflow.log_metric("n_trials", N_TRIALS)
             try:
                 mlflow.sklearn.log_model(prod_model, name="lgbm_model")
             except Exception as exc:
@@ -363,13 +535,15 @@ def train_model() -> dict:
         )
 
     return {
-        "best_params":           best_params,
-        "best_cv_f1":            round(best_cv_f1, 4),
-        "holdout_accuracy":      round(holdout_accuracy, 4),
-        "holdout_f1":            round(holdout_f1, 4),
-        "holdout_precision":     round(holdout_precision, 4),
-        "holdout_recall":        round(holdout_recall, 4),
-        "holdout_roc_auc":       round(holdout_auc, 4),
-        "meets_f1_target":       holdout_f1 >= TARGET_F1,
-        "meets_roc_auc_target":  holdout_auc >= TARGET_ROC_AUC,
+        "max_reliable_lead_time":  max_reliable_lead_time,   # answer to RQ2
+        "accuracy_threshold":      ACCURACY_THRESHOLD,
+        "best_params":             best_params,
+        "best_cv_f1":              round(best_cv_f1, 4),
+        "holdout_accuracy":        round(holdout_accuracy, 4),
+        "holdout_f1":              round(holdout_f1, 4),
+        "holdout_precision":       round(holdout_precision, 4),
+        "holdout_recall":          round(holdout_recall, 4),
+        "holdout_roc_auc":         round(holdout_auc, 4),
+        "meets_f1_target":         holdout_f1 >= TARGET_F1,
+        "meets_roc_auc_target":    holdout_auc >= TARGET_ROC_AUC,
     }
