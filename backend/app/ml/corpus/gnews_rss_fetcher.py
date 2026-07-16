@@ -59,9 +59,9 @@ GNEWS_RSS_BASE = "https://news.google.com/rss/search"
 # Polite delay between Google News requests (seconds) — per worker thread
 GNEWS_CRAWL_DELAY = 1.0
 
-# Concurrent workers: 4 threads × 1s delay ≈ 4 req/s total
-# Reduces runtime from ~66 min to ~17 min for a 6-year collection
-GNEWS_MAX_WORKERS = 4
+# Concurrent workers: 6 threads × 1s delay ≈ 6 req/s ceiling (latency-bound
+# in practice). Google News RSS tolerates this rate without 429 throttling.
+GNEWS_MAX_WORKERS = 6
 
 # ---------------------------------------------------------------------------
 # 1. National food/price queries (English)
@@ -751,45 +751,47 @@ def _is_credible(source_href: str) -> bool:
     return False
 
 
-def _quarter_windows(start_date: str, end_date: str) -> list[tuple[str, str, int, int]]:
+def _date_windows(
+    start_date: str,
+    end_date: str,
+    months_per_window: int = 1,
+) -> list[tuple[str, str, str]]:
     """
-    Return list of (after_date, before_date, year, quarter) tuples,
-    one per calendar quarter between start_date and end_date.
+    Return list of (after_date, before_date, label) tuples covering
+    start_date..end_date in windows of `months_per_window` calendar months.
 
-    Using quarterly windows instead of yearly means each query fetches
-    ~100 articles from a 3-month window rather than a 12-month window,
-    surfacing the long tail of articles that yearly windows miss.
+    Google News RSS caps results at ~100 per query per window, so finer
+    windows surface the long tail: yearly windows yielded 4,384 articles,
+    quarterly 16k+. Monthly windows (the default) push density further —
+    each query fetches up to ~100 articles per single month.
     """
     start = datetime.fromisoformat(start_date)
     end = datetime.fromisoformat(end_date)
 
-    windows: list[tuple[str, str, int, int]] = []
+    windows: list[tuple[str, str, str]] = []
 
-    year = start.year
-    # Start at the quarter containing start_date
-    q = (start.month - 1) // 3 + 1
+    year, month = start.year, start.month
+    # Align to the start of the window containing start_date
+    month = ((month - 1) // months_per_window) * months_per_window + 1
 
     while True:
-        # Quarter boundaries
-        q_month_start = (q - 1) * 3 + 1
-        q_month_end = q * 3
-
-        after = f"{year}-{q_month_start:02d}-01"
-        if q < 4:
-            before = f"{year}-{q_month_end + 1:02d}-01"
-        else:
-            before = f"{year + 1}-01-01"
-
-        # Stop if the quarter starts after end_date
-        after_dt = datetime.fromisoformat(after)
-        if after_dt > end:
+        after = f"{year}-{month:02d}-01"
+        if datetime.fromisoformat(after) > end:
             break
 
-        windows.append((after, before, year, q))
+        end_month = month + months_per_window
+        end_year = year
+        while end_month > 12:
+            end_month -= 12
+            end_year += 1
+        before = f"{end_year}-{end_month:02d}-01"
 
-        q += 1
-        if q > 4:
-            q = 1
+        label = f"{year}-{month:02d}"
+        windows.append((after, before, label))
+
+        month += months_per_window
+        while month > 12:
+            month -= 12
             year += 1
 
     return windows
@@ -816,21 +818,13 @@ def _parse_entry(entry) -> dict | None:
     if " - " in title:
         title = title.rsplit(" - ", 1)[0].strip()
 
-    # Reject articles whose title contains no food insecurity signal.
-    # Google News sometimes returns tangentially related results for targeted
-    # food queries (e.g. a query for "rice prices Philippines" returns a
-    # restaurant review that mentions rice).  Checking the title here is
-    # cheap and eliminates the most obvious false positives before storage.
-    # Food signal check on title only.
-    # Geo is NOT checked here because Google News RSS returns title-only
-    # (summary is always empty) — the geographic anchor is already encoded in
-    # the query string (e.g. "Batangas food prices rice"), so an article titled
-    # "Rice prices surge amid harvest delays" is legitimately geo-scoped even
-    # though the place name does not appear in the title itself.
-    title_lower = title.lower()
-    if not any(kw in title_lower for kw in CALABARZON_FOOD_SIGNALS):
-        return None
-
+    # No keyword gate here: relevance is decided downstream by the XLM-RoBERTa
+    # zero-shot NLI scorer from the article's full context and meaning, not by
+    # the presence of specific words. The query itself already encodes food +
+    # geo intent, and the credible-domain check above bounds the noise. A title
+    # like "Taal evacuees cram centers as eruption drags on" carries a genuine
+    # food-insecurity signal (T7 displacement) despite containing no food word;
+    # a keyword gate would silently discard it before scoring.
     link: str = entry.get("link", "") or ""
     article_id: str = entry.get("id", link)  # stable Google News article ID
 
@@ -864,6 +858,7 @@ def _parse_entry(entry) -> dict | None:
 def fetch_gnews_rss_articles(
     start_date: str,
     end_date: str,
+    window_months: int = 1,
 ) -> list[dict]:
     """
     Fetch CALABARZON food-insecurity articles from Google News RSS (historical).
@@ -889,19 +884,19 @@ def fetch_gnews_rss_articles(
             summary       : str   — empty (not available in RSS)
             source_domain : str   — original publisher domain from CREDIBLE_DOMAINS
     """
-    windows = _quarter_windows(start_date, end_date)
+    windows = _date_windows(start_date, end_date, window_months)
     total_requests = len(GNEWS_RSS_QUERIES) * len(windows)
 
     logger.info(
-        "Google News RSS: %d queries × %d quarters = %d requests",
-        len(GNEWS_RSS_QUERIES), len(windows), total_requests,
+        "Google News RSS: %d queries × %d windows (%d-month) = %d requests",
+        len(GNEWS_RSS_QUERIES), len(windows), window_months, total_requests,
     )
 
     records: list[dict] = []
     seen_ids: set[str] = set()
 
     def _fetch_one(args: tuple) -> list[dict]:
-        query, after, before, year, quarter = args
+        query, after, before, label = args
         results: list[dict] = []
         feed_url = _build_url(query, after, before)
         try:
@@ -912,12 +907,12 @@ def fetch_gnews_rss_articles(
                 if record is not None:
                     results.append(record)
         except Exception as exc:
-            logger.debug("Google News RSS error (%s %d-Q%d): %s", query[:30], year, quarter, exc)
+            logger.debug("Google News RSS error (%s %s): %s", query[:30], label, exc)
         return results
 
-    for after, before, year, quarter in windows:
-        quarter_count = 0
-        tasks = [(q, after, before, year, quarter) for q in GNEWS_RSS_QUERIES]
+    for after, before, label in windows:
+        window_count = 0
+        tasks = [(q, after, before, label) for q in GNEWS_RSS_QUERIES]
 
         with ThreadPoolExecutor(max_workers=GNEWS_MAX_WORKERS) as executor:
             futures = [executor.submit(_fetch_one, t) for t in tasks]
@@ -928,11 +923,11 @@ def fetch_gnews_rss_articles(
                         continue
                     seen_ids.add(dedup_key)
                     records.append(record)
-                    quarter_count += 1
+                    window_count += 1
 
         logger.info(
-            "Google News RSS %d-Q%d: +%d articles (total %d)",
-            year, quarter, quarter_count, len(records),
+            "Google News RSS %s: +%d articles (total %d)",
+            label, window_count, len(records),
         )
 
     logger.info(

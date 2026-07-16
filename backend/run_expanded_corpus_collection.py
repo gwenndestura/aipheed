@@ -414,19 +414,26 @@ def main() -> None:
     all_new: list[dict] = []
 
     if not args.classify_only:
-        # ── 1. Google News RSS ────────────────────────────────────────────
+        # ── 1. Google News RSS (monthly windows, checkpointed per year) ──
         if "gnews_rss" in args.sources:
-            cached = _load_checkpoint("gnews_rss") if args.resume else None
-            if cached is not None:
-                all_new += cached
-            else:
-                logger.info("[1/4] Google News RSS fetcher...")
-                from app.ml.corpus.gnews_rss_fetcher import fetch_gnews_rss_articles
-                gnews = fetch_gnews_rss_articles(start_date, end_date)
+            logger.info("[1/4] Google News RSS fetcher (monthly windows)...")
+            from app.ml.corpus.gnews_rss_fetcher import fetch_gnews_rss_articles
+
+            start_year = int(start_date[:4])
+            end_year = int(end_date[:4])
+            for year in range(start_year, end_year + 1):
+                ckpt_name = f"gnews_rss_{year}"
+                cached = _load_checkpoint(ckpt_name) if args.resume else None
+                if cached is not None:
+                    all_new += cached
+                    continue
+                y_start = max(start_date, f"{year}-01-01")
+                y_end = min(end_date, f"{year}-12-31")
+                gnews = fetch_gnews_rss_articles(y_start, y_end, window_months=1)
                 for r in gnews:
                     r.setdefault("fetcher_source", "gnews_rss")
-                _save_checkpoint("gnews_rss", gnews)
-                logger.info("  Google News RSS: %d articles", len(gnews))
+                _save_checkpoint(ckpt_name, gnews)
+                logger.info("  Google News RSS %d: %d articles", year, len(gnews))
                 all_new += gnews
 
         # ── 2. Direct RSS feeds ───────────────────────────────────────────
