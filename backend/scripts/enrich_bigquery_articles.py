@@ -89,6 +89,33 @@ def _clean(text: str) -> str:
     return text
 
 
+_P_TAG = re.compile(r"<p[^>]*>(.*?)</p>", re.I | re.S)
+_TAG_STRIP = re.compile(r"<[^>]+>")
+_BOILERPLATE = re.compile(
+    r"cookie|subscribe|sign.?up|newsletter|all rights reserved|advertis|"
+    r"follow us|read more|click here|terms of (use|service)|privacy policy|"
+    r"inquirer\.net|copyright|by continuing", re.I)
+
+
+def _lead_paragraphs(html: str, budget: int = 500) -> str:
+    """
+    First real paragraphs of the article body, joined up to `budget` chars.
+    The impact language NLI needs ('...straining poor households') lives in
+    the lead, not in the headline or meta description.
+    """
+    out: list[str] = []
+    total = 0
+    for m in _P_TAG.finditer(html):
+        text = _clean(_TAG_STRIP.sub(" ", m.group(1)))
+        if len(text) < 60 or _BOILERPLATE.search(text):
+            continue
+        out.append(text)
+        total += len(text)
+        if total >= budget:
+            break
+    return " ".join(out)[:budget]
+
+
 def _extract(html: str) -> tuple[str, str]:
     title = ""
     desc = ""
@@ -98,12 +125,17 @@ def _extract(html: str) -> tuple[str, str]:
             title = _clean(m.group(1))
             if title:
                 break
-    for key in ("og_desc", "og_desc2", "meta_desc"):
-        m = _META_RE[key].search(html)
-        if m:
-            desc = _clean(m.group(1))
-            if desc:
-                break
+    # Prefer real lead paragraphs; fall back to og/meta description.
+    desc = _lead_paragraphs(html)
+    if len(desc) < 80:
+        for key in ("og_desc", "og_desc2", "meta_desc"):
+            m = _META_RE[key].search(html)
+            if m:
+                meta = _clean(m.group(1))
+                if len(meta) > len(desc):
+                    desc = meta
+                if desc:
+                    break
     return title, desc
 
 
