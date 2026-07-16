@@ -39,12 +39,15 @@ Usage:
 from __future__ import annotations
 
 import logging
+import random
+import threading
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timezone
 from urllib.parse import quote, urlparse
 
 import feedparser
+import requests
 
 from app.ml.corpus.rss_fetcher import CALABARZON_FOOD_SIGNALS, CREDIBLE_DOMAINS
 
@@ -57,11 +60,13 @@ logger = logging.getLogger(__name__)
 GNEWS_RSS_BASE = "https://news.google.com/rss/search"
 
 # Polite delay between Google News requests (seconds) — per worker thread
-GNEWS_CRAWL_DELAY = 1.0
+GNEWS_CRAWL_DELAY = 1.5
 
-# Concurrent workers: 6 threads × 1s delay ≈ 6 req/s ceiling (latency-bound
-# in practice). Google News RSS tolerates this rate without 429 throttling.
-GNEWS_MAX_WORKERS = 6
+# Concurrent workers: keep the aggregate rate near ~2 req/s. Google News
+# starts returning 503 (bot detection) when hammered — observed at 4-6
+# workers × 1s after a few thousand rapid requests. Slow and steady wins:
+# a throttled IP collects zero.
+GNEWS_MAX_WORKERS = 3
 
 # ---------------------------------------------------------------------------
 # 1. National food/price queries (English)
@@ -729,6 +734,86 @@ GNEWS_RSS_QUERIES: list[str] = (
 
 
 # ---------------------------------------------------------------------------
+# Throttle-aware HTTP layer
+#
+# Google News returns HTTP 503 (bot detection) when the aggregate request
+# rate is too high. A throttled IP gets 503 on EVERY request — continuing
+# just extends the block. All workers therefore share one cooldown: the
+# first 503 pauses everyone, repeated 503s escalate the pause exponentially
+# (60s → 120s → 240s → 480s → 600s cap), and any successful response
+# resets the escalation level.
+# ---------------------------------------------------------------------------
+
+_UA = (
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+    "(KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36"
+)
+
+_throttle_lock = threading.Lock()
+_throttle_until: float = 0.0    # epoch seconds — no requests before this
+_throttle_level: int = 0        # escalation counter
+
+
+def _respect_throttle() -> None:
+    """Block until any active global cooldown has expired."""
+    while True:
+        with _throttle_lock:
+            wait = _throttle_until - time.time()
+        if wait <= 0:
+            return
+        time.sleep(min(wait, 30.0))
+
+
+def _report_throttle() -> None:
+    """Record a 503/429 and extend the shared cooldown."""
+    global _throttle_until, _throttle_level
+    with _throttle_lock:
+        _throttle_level = min(_throttle_level + 1, 5)
+        cooldown = min(60.0 * (2 ** (_throttle_level - 1)), 600.0)
+        new_until = time.time() + cooldown
+        if new_until > _throttle_until:
+            _throttle_until = new_until
+            logger.warning(
+                "Google News throttling detected (503/429) — pausing all "
+                "workers %.0fs (level %d)", cooldown, _throttle_level,
+            )
+
+
+def _report_success() -> None:
+    """A 200 response resets the throttle escalation level."""
+    global _throttle_level
+    if _throttle_level:
+        with _throttle_lock:
+            _throttle_level = 0
+
+
+def _fetch_feed(url: str):
+    """
+    GET a Google News RSS URL with a browser User-Agent and parse it.
+    Returns a feedparser result, or None after exhausting retries.
+    """
+    for attempt in range(4):
+        _respect_throttle()
+        try:
+            resp = requests.get(
+                url,
+                headers={"User-Agent": _UA, "Accept-Language": "en-PH,en;q=0.9"},
+                timeout=20,
+            )
+        except Exception:
+            time.sleep(2.0 + attempt * 3.0)
+            continue
+        if resp.status_code in (429, 503):
+            _report_throttle()
+            continue
+        if resp.status_code != 200:
+            return None
+        _report_success()
+        return feedparser.parse(resp.content)
+    return None
+
+
+# ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
 
@@ -900,8 +985,10 @@ def fetch_gnews_rss_articles(
         results: list[dict] = []
         feed_url = _build_url(query, after, before)
         try:
-            feed = feedparser.parse(feed_url)
-            time.sleep(GNEWS_CRAWL_DELAY)
+            feed = _fetch_feed(feed_url)
+            time.sleep(GNEWS_CRAWL_DELAY + random.uniform(0.0, 0.5))
+            if feed is None:
+                return results
             for entry in feed.entries:
                 record = _parse_entry(entry)
                 if record is not None:
