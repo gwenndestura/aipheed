@@ -432,16 +432,28 @@ def main() -> None:
 
     if not args.classify_only:
         # ── 0. GDELT BigQuery (pre-harvested by scripts/gdelt_bigquery_harvest.py)
+        # Prefers the enriched variant (real title + lead paragraphs from
+        # scripts/enrich_bigquery_articles.py) — the NLI scorer needs real
+        # text, not slug-derived pseudo-titles.
         if "gdelt_bq" in args.sources:
-            bq_path = Path("data/raw/gdelt_bigquery.parquet")
-            if bq_path.exists():
-                bq = pd.read_parquet(bq_path).to_dict(orient="records")
-                logger.info("[0/4] GDELT BigQuery harvest: %d articles", len(bq))
+            candidates = [
+                Path("data/raw/gdelt_bigquery_enriched.parquet"),
+                Path("data/raw/gdelt_bigquery.parquet"),
+            ]
+            bq_path = next((p for p in candidates if p.exists()), None)
+            if bq_path is not None:
+                bq_df = pd.read_parquet(bq_path)
+                keep = [c for c in ["title", "link", "article_id", "published",
+                                    "summary", "source_domain", "fetcher_source"]
+                        if c in bq_df.columns]
+                bq = bq_df[keep].to_dict(orient="records")
+                logger.info("[0/4] GDELT BigQuery harvest (%s): %d articles",
+                            bq_path.name, len(bq))
                 all_new += bq
             else:
                 logger.warning(
-                    "gdelt_bq requested but %s missing — run "
-                    "scripts/gdelt_bigquery_harvest.py first; skipping.", bq_path,
+                    "gdelt_bq requested but no harvest file found — run "
+                    "scripts/gdelt_bigquery_harvest.py first; skipping.",
                 )
 
         # ── 1. Google News RSS (monthly windows, checkpointed per year) ──
