@@ -127,11 +127,33 @@ def _get(url: str, params=None, tries: int = 5, timeout: int = 60):
     return None
 
 
+_COLLINFO_CACHE = CKPT_DIR / "collinfo.json"
+
+
 def _crawl_ids() -> list[str]:
-    r = _get(f"{INDEX_HOST}/collinfo.json")
-    if r is None:
-        raise SystemExit("Cannot reach Common Crawl index host")
-    ids = [c["id"] for c in r.json()]
+    """
+    Crawl id list, cached locally — the set changes ~monthly, and the index
+    host throttles aggressively, so never let an unreachable host kill a
+    run that could proceed from cache. If neither host nor cache is
+    available, wait out the throttle in 30-min rests (up to 6 hours).
+    """
+    for attempt in range(12):
+        r = _get(f"{INDEX_HOST}/collinfo.json")
+        if r is not None:
+            CKPT_DIR.mkdir(parents=True, exist_ok=True)
+            _COLLINFO_CACHE.write_text(r.text, encoding="utf-8")
+            break
+        if _COLLINFO_CACHE.exists():
+            logger.warning("index host unreachable — using cached collinfo")
+            break
+        logger.warning("index host unreachable and no cache — resting 30 min "
+                       "(attempt %d/12)", attempt + 1)
+        time.sleep(1800)
+    else:
+        raise SystemExit("Cannot reach Common Crawl index host after 6h")
+
+    data = json.loads(_COLLINFO_CACHE.read_text(encoding="utf-8"))
+    ids = [c["id"] for c in data]
     keep = [i for i in ids if re.match(r"CC-MAIN-202[0-6]-", i)]
     keep.sort()
     return keep
@@ -148,7 +170,7 @@ def _cdx_domain_crawl(crawl_id: str, domain: str) -> list[dict]:
     """
     ckpt = CKPT_DIR / f"{crawl_id}_{domain.replace('/', '_')}.parquet"
     if ckpt.exists():
-        return pd.read_parquet(ckpt).to_dict("records")
+        return pd.read_parquet(ckpt).to_dict("records"), True
 
     rows: list[dict] = []
     page = 0
@@ -199,7 +221,7 @@ def _cdx_domain_crawl(crawl_id: str, domain: str) -> list[dict]:
         pd.DataFrame(rows).to_parquet(ckpt, index=False)
     # Politeness gap between pairs — the index host throttles sustained load.
     time.sleep(5.0)
-    return rows
+    return rows, clean_end
 
 
 def _fetch_warc_html(filename: str, offset: int, length: int) -> str:
@@ -237,11 +259,22 @@ def main() -> None:
     index_rows: list[dict] = []
     total_pairs = len(crawls) * len(DOMAINS)
     done_pairs = 0
+    consecutive_gaveups = 0
     for crawl_id in crawls:
         for domain in DOMAINS:
-            rows = _cdx_domain_crawl(crawl_id, domain)
+            rows, clean = _cdx_domain_crawl(crawl_id, domain)
             index_rows.extend(rows)
             done_pairs += 1
+            if clean:
+                consecutive_gaveups = 0
+            else:
+                consecutive_gaveups += 1
+                if consecutive_gaveups >= 5:
+                    logger.warning(
+                        "index host storm (5 consecutive give-ups) — "
+                        "resting 30 min before continuing")
+                    time.sleep(1800)
+                    consecutive_gaveups = 0
             if done_pairs % 20 == 0:
                 logger.info("index sweep %d/%d pairs — %d capture rows",
                             done_pairs, total_pairs, len(index_rows))
