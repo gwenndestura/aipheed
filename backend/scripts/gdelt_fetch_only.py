@@ -35,28 +35,41 @@ CHECKPOINT = Path("data/raw/checkpoints/gdelt.parquet")
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Fetch-only GDELT REST")
-    parser.add_argument("--start", default="2020-01-01")
-    parser.add_argument("--end", default="2025-12-31")
+    parser.add_argument("--start", type=int, default=2020, help="first year")
+    parser.add_argument("--end", type=int, default=2025, help="last year")
     parser.add_argument("--window-days", type=int, default=30)
     args = parser.parse_args()
 
-    if CHECKPOINT.exists():
-        logger.info("Checkpoint already exists (%s) — delete it to refetch.", CHECKPOINT)
-        return
-
     from app.ml.corpus.gdelt_fetcher import fetch_gdelt_articles
 
-    records = fetch_gdelt_articles(
-        args.start, args.end,
-        prefer_bigquery=False,          # BigQuery already harvested separately
-        window_days=args.window_days,
-    )
-    for r in records:
-        r.setdefault("fetcher_source", "gdelt")
+    # Per-year checkpoints (gdelt_2020.parquet ...) so an interruption loses
+    # at most one year's fetch, never the whole multi-hour run. The combined
+    # runner-format checkpoint is rebuilt from year files at the end.
+    all_records: list[dict] = []
+    for year in range(args.start, args.end + 1):
+        year_ckpt = CHECKPOINT.parent / f"gdelt_{year}.parquet"
+        if year_ckpt.exists():
+            recs = pd.read_parquet(year_ckpt).to_dict("records")
+            logger.info("%d already checkpointed (%d articles) — skipping",
+                        year, len(recs))
+            all_records += recs
+            continue
+        logger.info("=== Fetching GDELT REST for %d ===", year)
+        recs = fetch_gdelt_articles(
+            f"{year}-01-01", f"{year}-12-31",
+            prefer_bigquery=False,      # BigQuery already harvested separately
+            window_days=args.window_days,
+        )
+        for r in recs:
+            r.setdefault("fetcher_source", "gdelt")
+        CHECKPOINT.parent.mkdir(parents=True, exist_ok=True)
+        pd.DataFrame(recs).to_parquet(year_ckpt, index=False)
+        logger.info("Year %d checkpoint saved: %d articles", year, len(recs))
+        all_records += recs
 
-    CHECKPOINT.parent.mkdir(parents=True, exist_ok=True)
-    pd.DataFrame(records).to_parquet(CHECKPOINT, index=False)
-    logger.info("GDELT checkpoint saved: %d articles -> %s", len(records), CHECKPOINT)
+    pd.DataFrame(all_records).to_parquet(CHECKPOINT, index=False)
+    logger.info("GDELT combined checkpoint saved: %d articles -> %s",
+                len(all_records), CHECKPOINT)
 
 
 if __name__ == "__main__":
