@@ -248,39 +248,53 @@ def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--crawls-limit", type=int, default=0,
                     help="use only the N most recent crawls (0 = all)")
+    ap.add_argument("--warc-only", action="store_true",
+                    help="skip the index sweep; extract WARC records for all "
+                         "captures already banked in checkpoints_cc (useful "
+                         "when the index host is throttling but the data "
+                         "host is fine)")
     args = ap.parse_args()
 
-    crawls = _crawl_ids()
-    if args.crawls_limit:
-        crawls = crawls[-args.crawls_limit:]
-    logger.info("Crawls in window: %d | domains: %d", len(crawls), len(DOMAINS))
+    if args.warc_only:
+        files = sorted(CKPT_DIR.glob("CC-MAIN*.parquet"))
+        if not files:
+            raise SystemExit("--warc-only: no banked index checkpoints found")
+        idx = pd.concat([pd.read_parquet(f) for f in files])
+        idx = idx.drop_duplicates(subset=["url"])
+        logger.info("--warc-only: %d banked unique URLs from %d checkpoints",
+                    len(idx), len(files))
+    else:
+        crawls = _crawl_ids()
+        if args.crawls_limit:
+            crawls = crawls[-args.crawls_limit:]
+        logger.info("Crawls in window: %d | domains: %d", len(crawls), len(DOMAINS))
 
-    # ── Phase 1: index sweep (checkpointed per crawl-domain) ─────────────
-    index_rows: list[dict] = []
-    total_pairs = len(crawls) * len(DOMAINS)
-    done_pairs = 0
-    consecutive_gaveups = 0
-    for crawl_id in crawls:
-        for domain in DOMAINS:
-            rows, clean = _cdx_domain_crawl(crawl_id, domain)
-            index_rows.extend(rows)
-            done_pairs += 1
-            if clean:
-                consecutive_gaveups = 0
-            else:
-                consecutive_gaveups += 1
-                if consecutive_gaveups >= 5:
-                    logger.warning(
-                        "index host storm (5 consecutive give-ups) — "
-                        "resting 30 min before continuing")
-                    time.sleep(1800)
+        # ── Phase 1: index sweep (checkpointed per crawl-domain) ─────────
+        index_rows: list[dict] = []
+        total_pairs = len(crawls) * len(DOMAINS)
+        done_pairs = 0
+        consecutive_gaveups = 0
+        for crawl_id in crawls:
+            for domain in DOMAINS:
+                rows, clean = _cdx_domain_crawl(crawl_id, domain)
+                index_rows.extend(rows)
+                done_pairs += 1
+                if clean:
                     consecutive_gaveups = 0
-            if done_pairs % 20 == 0:
-                logger.info("index sweep %d/%d pairs — %d capture rows",
-                            done_pairs, total_pairs, len(index_rows))
+                else:
+                    consecutive_gaveups += 1
+                    if consecutive_gaveups >= 5:
+                        logger.warning(
+                            "index host storm (5 consecutive give-ups) — "
+                            "resting 30 min before continuing")
+                        time.sleep(1800)
+                        consecutive_gaveups = 0
+                if done_pairs % 20 == 0:
+                    logger.info("index sweep %d/%d pairs — %d capture rows",
+                                done_pairs, total_pairs, len(index_rows))
 
-    idx = pd.DataFrame(index_rows).drop_duplicates(subset=["url"])
-    logger.info("Index sweep complete: %d unique food-slugged URLs", len(idx))
+        idx = pd.DataFrame(index_rows).drop_duplicates(subset=["url"])
+        logger.info("Index sweep complete: %d unique food-slugged URLs", len(idx))
 
     # ── Phase 2: WARC fetch + extract (resumable via partial output) ─────
     done_ids: set[str] = set()
