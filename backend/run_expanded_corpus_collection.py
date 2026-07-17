@@ -400,8 +400,8 @@ def main() -> None:
     parser.add_argument("--end", default="2025-12-31")
     parser.add_argument(
         "--sources", nargs="+",
-        choices=["gnews_rss", "rss", "gdelt", "gdelt_bq"],
-        default=["gnews_rss", "rss", "gdelt", "gdelt_bq"],
+        choices=["gnews_rss", "rss", "gdelt", "gdelt_bq", "commoncrawl"],
+        default=["gnews_rss", "rss", "gdelt", "gdelt_bq", "commoncrawl"],
         help="Which fetchers to run (default: all)",
     )
     parser.add_argument("--no-classify", action="store_true",
@@ -455,6 +455,16 @@ def main() -> None:
                     "gdelt_bq requested but no harvest file found — run "
                     "scripts/gdelt_bigquery_harvest.py first; skipping.",
                 )
+
+        # ── 0b. Common Crawl (pre-harvested, pre-enriched) ────────────────
+        if "commoncrawl" in args.sources:
+            cc_path = Path("data/raw/commoncrawl.parquet")
+            if cc_path.exists():
+                cc = pd.read_parquet(cc_path).to_dict(orient="records")
+                logger.info("[0b] Common Crawl harvest: %d articles", len(cc))
+                all_new += cc
+            else:
+                logger.info("commoncrawl source: no harvest file yet — skipping.")
 
         # ── 1. Google News RSS (monthly windows, checkpointed per year) ──
         if "gnews_rss" in args.sources:
