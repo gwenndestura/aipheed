@@ -951,6 +951,7 @@ def fetch_gnews_rss_articles(
     start_date: str,
     end_date: str,
     window_months: int = 1,
+    queries: list[str] | None = None,
 ) -> list[dict]:
     """
     Fetch CALABARZON food-insecurity articles from Google News RSS (historical).
@@ -976,12 +977,14 @@ def fetch_gnews_rss_articles(
             summary       : str   — empty (not available in RSS)
             source_domain : str   — original publisher domain from CREDIBLE_DOMAINS
     """
+    query_bank = queries if queries is not None else GNEWS_RSS_QUERIES
+    inter_window_rest = float(os.getenv("AIPHEED_GNEWS_WINDOW_REST", "0"))
     windows = _date_windows(start_date, end_date, window_months)
-    total_requests = len(GNEWS_RSS_QUERIES) * len(windows)
+    total_requests = len(query_bank) * len(windows)
 
     logger.info(
         "Google News RSS: %d queries × %d windows (%d-month) = %d requests",
-        len(GNEWS_RSS_QUERIES), len(windows), window_months, total_requests,
+        len(query_bank), len(windows), window_months, total_requests,
     )
 
     records: list[dict] = []
@@ -1006,7 +1009,7 @@ def fetch_gnews_rss_articles(
 
     for after, before, label in windows:
         window_count = 0
-        tasks = [(q, after, before, label) for q in GNEWS_RSS_QUERIES]
+        tasks = [(q, after, before, label) for q in query_bank]
 
         with ThreadPoolExecutor(max_workers=GNEWS_MAX_WORKERS) as executor:
             futures = [executor.submit(_fetch_one, t) for t in tasks]
@@ -1023,6 +1026,12 @@ def fetch_gnews_rss_articles(
             "Google News RSS %s: +%d articles (total %d)",
             label, window_count, len(records),
         )
+
+        # Duty-cycle rest between windows (AIPHEED_GNEWS_WINDOW_REST seconds):
+        # bursts above ~500 requests trip Google's bot detection, so a pause
+        # after each window keeps the profile under the trigger.
+        if inter_window_rest > 0:
+            time.sleep(inter_window_rest)
 
     logger.info(
         "fetch_gnews_rss_articles: %d credible articles (%s to %s)",

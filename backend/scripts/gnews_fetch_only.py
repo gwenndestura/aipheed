@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import argparse
 import logging
+import os
 import sys
 from pathlib import Path
 
@@ -40,9 +41,37 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="Fetch-only Google News RSS")
     parser.add_argument("--start", type=int, default=2020, help="first year")
     parser.add_argument("--end", type=int, default=2025, help="last year")
+    parser.add_argument(
+        "--profile", choices=["low", "full"], default="low",
+        help="low: ~300 topical queries, quarterly windows, 1 worker @3s, "
+             "3-min rest between windows (~7.2k requests total). "
+             "full: every query incl. per-LGU, monthly windows.",
+    )
     args = parser.parse_args()
 
-    from app.ml.corpus.gnews_rss_fetcher import fetch_gnews_rss_articles
+    if args.profile == "low":
+        # Must be set BEFORE the fetcher module is imported.
+        os.environ.setdefault("AIPHEED_GNEWS_WORKERS", "1")
+        os.environ.setdefault("AIPHEED_GNEWS_DELAY", "3.0")
+        os.environ.setdefault("AIPHEED_GNEWS_WINDOW_REST", "180")
+
+    from app.ml.corpus.gnews_rss_fetcher import (
+        GNEWS_RSS_QUERIES,
+        _DOMAIN_TARGETED,
+        _LGU_QUERIES,
+        fetch_gnews_rss_articles,
+    )
+
+    if args.profile == "low":
+        drop = set(_LGU_QUERIES) | set(_DOMAIN_TARGETED)
+        queries = [q for q in GNEWS_RSS_QUERIES if q not in drop]
+        window_months = 3
+    else:
+        queries = None
+        window_months = 1
+
+    logger.info("Profile: %s (%s queries, %d-month windows)",
+                args.profile, len(queries) if queries else "all", window_months)
 
     CHECKPOINT_DIR.mkdir(parents=True, exist_ok=True)
 
@@ -53,7 +82,9 @@ def main() -> None:
             continue
         logger.info("=== Fetching Google News RSS for %d ===", year)
         records = fetch_gnews_rss_articles(
-            f"{year}-01-01", f"{year}-12-31", window_months=1
+            f"{year}-01-01", f"{year}-12-31",
+            window_months=window_months,
+            queries=queries,
         )
         for r in records:
             r.setdefault("fetcher_source", "gnews_rss")
