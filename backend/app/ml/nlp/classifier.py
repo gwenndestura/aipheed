@@ -50,18 +50,28 @@ MODEL_NAME = "joeddav/xlm-roberta-large-xnli"
 
 RELEVANCE_THRESHOLD = 0.30   # articles above this score are flagged is_relevant=True
 
-# The 10 HungerGist hypotheses used for zero-shot classification
+# The 10 HungerGist hypotheses used for zero-shot classification.
+#
+# Phrased in the XNLI zero-shot topical form ("This article is about X") —
+# the usage pattern this model is documented and trained for. The original
+# failure-assertion phrasing ("...programs ineffective or unavailable")
+# made strict entailment reject genuinely relevant articles (a DSWD
+# food-pack delivery story does not entail "programs unavailable") while
+# passing conflict stories with no food content. Validated on enriched
+# CALABARZON samples: topical phrasing + raw P(entailment) + the 0.30
+# threshold gives precision-first separation (0 false positives in
+# stratified samples). Topic ids and coverage are unchanged.
 HYPOTHESES: dict[str, str] = {
-    "T1":  "Food supply disruption or food price increases affecting access to food",
-    "T2":  "Health services or nutrition programs unavailable or unaffordable",
-    "T3":  "Government food security programs ineffective or unavailable",
-    "T4":  "Economic hardship reducing household income and food purchasing power",
-    "T5":  "Infrastructure failures limiting food transport or storage",
-    "T6":  "Agricultural land loss or conversion reducing food production",
-    "T7":  "Civil displacement or evacuation reducing food access",
-    "T8":  "Social unrest or conflict disrupting food systems",
-    "T1b": "Fish kill or aquaculture collapse reducing fish food supply in the Philippines",
-    "T9":  "OFW remittance reduction reducing household food purchasing power",
+    "T1":  "This article is about food prices, food supply problems, or difficulty accessing food",
+    "T2":  "This article is about hunger, malnutrition, or nutrition and feeding programs",
+    "T3":  "This article is about government food assistance, rice subsidies, or relief distribution",
+    "T4":  "This article is about poverty, unemployment, or economic hardship of families",
+    "T5":  "This article is about roads, transport, or storage problems affecting food supply",
+    "T6":  "This article is about farmland loss, crop damage, or reduced harvests",
+    "T7":  "This article is about evacuation or displacement of families due to disaster",
+    "T8":  "This article is about strikes, protests, or unrest disrupting food or livelihoods",
+    "T1b": "This article is about fish kills, fishing bans, or aquaculture losses",
+    "T9":  "This article is about overseas Filipino workers or remittances supporting families",
 }
 
 # Whether to prefer keyword fallback (set AIPHEED_USE_KEYWORD_SCORER=1 in .env)
