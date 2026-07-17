@@ -31,6 +31,7 @@ Usage
 
 from __future__ import annotations
 
+import argparse
 import hashlib
 import logging
 import os
@@ -48,16 +49,13 @@ from app.ml.corpus.rss_fetcher import CREDIBLE_DOMAINS  # noqa: E402
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 logger = logging.getLogger("gdelt_bq_harvest")
 
-RAW_OUT = Path("data/raw/checkpoints/gdelt_bq_urls_raw.parquet")
-CORPUS_OUT = Path("data/raw/checkpoints/gdelt_bigquery.parquet")
-
 LOC_REGEX = (
     r"batangas|cavite|laguna|rizal|quezon|calabarzon|lucena|antipolo|calamba|"
     r"dasmari|bacoor|imus|tagaytay|lipa|tanauan|bi.an|santa rosa|san pablo|"
     r"cabuyao|san pedro|lucban|sariaya|taal"
 )
 
-QUERY = f"""
+CALABARZON_QUERY = f"""
 SELECT
   DocumentIdentifier AS url,
   DATE(_PARTITIONTIME) AS seen_date,
@@ -67,6 +65,53 @@ WHERE _PARTITIONTIME >= TIMESTAMP("2020-01-01")
   AND _PARTITIONTIME <  TIMESTAMP("2026-07-01")
   AND REGEXP_CONTAINS(LOWER(V2Locations), r"{LOC_REGEX}")
 """
+
+# Nationwide sweep: credible PH news domains x food-topic URL slugs.
+# Scans only DocumentIdentifier (~81 GB for 6.5y) — location tagging not
+# required, so it catches national food-crisis coverage that mentions
+# CALABARZON without a GDELT geo tag. Geo relevance is decided downstream
+# (geocoder on enriched title+lead).
+_NATL_DOMAINS = (
+    r"inquirer\.net|philstar\.com|gmanetwork\.com|abs-cbn\.com|mb\.com\.ph|"
+    r"pna\.gov\.ph|rappler\.com|manilatimes\.net|businessmirror\.com\.ph|"
+    r"sunstar\.com\.ph|tribune\.net\.ph|journal\.com\.ph|remate\.ph|"
+    r"abante\.com\.ph|bworldonline\.com|malaya\.com\.ph|manilastandard\.net"
+)
+_NATL_SLUGS = (
+    r"food|rice|palay|bigas|hunger|gutom|famine|malnutri|feeding|ayuda|"
+    r"relief|pantawid|4ps|kadiwa|nfa|subsid|farm|agri|magsasaka|harvest|"
+    r"crop|fisher|isda|tilapia|asf|price|presyo|inflation|bilihin|palengke|"
+    r"typhoon|bagyo|flood|baha|drought|el-nino|evacuat|bakwit|displac|"
+    r"poverty|kahirapan|unemploy|shortage|kakulangan|onion|sibuyas|sugar|"
+    r"asukal|fertilizer|vegetable|gulay|galunggong"
+)
+
+NATIONAL_QUERY = f"""
+SELECT
+  DocumentIdentifier AS url,
+  DATE(_PARTITIONTIME) AS seen_date,
+  '' AS locations
+FROM `gdelt-bq.gdeltv2.gkg_partitioned`
+WHERE _PARTITIONTIME >= TIMESTAMP("2020-01-01")
+  AND _PARTITIONTIME <  TIMESTAMP("2026-07-01")
+  AND REGEXP_CONTAINS(DocumentIdentifier, r"(?i)({_NATL_DOMAINS})")
+  AND REGEXP_CONTAINS(DocumentIdentifier, r"(?i)({_NATL_SLUGS})")
+"""
+
+MODES = {
+    "calabarzon": {
+        "query": CALABARZON_QUERY,
+        "raw_out": Path("data/raw/gdelt_bq_urls_raw.parquet"),
+        "corpus_out": Path("data/raw/gdelt_bigquery.parquet"),
+        "slug_filter": True,   # location-first pool needs topical narrowing
+    },
+    "national": {
+        "query": NATIONAL_QUERY,
+        "raw_out": Path("data/raw/gdelt_bq_national_raw.parquet"),
+        "corpus_out": Path("data/raw/gdelt_bq_national.parquet"),
+        "slug_filter": False,  # already slug-filtered in SQL
+    },
+}
 
 # Wide topical net for the LOCAL slug pre-filter (volume control before NLI;
 # English + Filipino stems across all 10 HungerGist hypothesis domains).
@@ -110,6 +155,14 @@ def main() -> None:
     from google.cloud import bigquery
     from google.oauth2 import service_account
 
+    parser = argparse.ArgumentParser(description="GDELT BigQuery harvest")
+    parser.add_argument("--mode", choices=list(MODES), default="calabarzon")
+    args = parser.parse_args()
+    mode = MODES[args.mode]
+    QUERY = mode["query"]
+    raw_out: Path = mode["raw_out"]
+    corpus_out: Path = mode["corpus_out"]
+
     key = os.environ.get("GOOGLE_APPLICATION_CREDENTIALS", "")
     if not key or not os.path.exists(key):
         raise SystemExit("GOOGLE_APPLICATION_CREDENTIALS not set or file missing")
@@ -138,9 +191,9 @@ def main() -> None:
             logger.info("  downloaded %d rows...", len(records))
 
     df = pd.DataFrame(records)
-    RAW_OUT.parent.mkdir(parents=True, exist_ok=True)
-    df.to_parquet(RAW_OUT, index=False)
-    logger.info("Saved raw URL set: %d rows -> %s", len(df), RAW_OUT)
+    raw_out.parent.mkdir(parents=True, exist_ok=True)
+    df.to_parquet(raw_out, index=False)
+    logger.info("Saved raw URL set: %d rows -> %s", len(df), raw_out)
 
     # ── Local narrowing (free, re-runnable) ──────────────────────────────
     df = df.drop_duplicates(subset=["url"])
@@ -150,9 +203,10 @@ def main() -> None:
     df = df[df["credible"]]
     logger.info("After credible-domain filter: %d", len(df))
 
-    df["slug_lower"] = df["url"].str.lower()
-    df = df[df["slug_lower"].str.contains(SLUG_TOPICS, regex=True, na=False)]
-    logger.info("After broad topical slug pre-filter: %d", len(df))
+    if mode["slug_filter"]:
+        df["slug_lower"] = df["url"].str.lower()
+        df = df[df["slug_lower"].str.contains(SLUG_TOPICS, regex=True, na=False)]
+        logger.info("After broad topical slug pre-filter: %d", len(df))
 
     df["title"] = df["url"].map(_slug_title)
     df = df[df["title"] != ""]
@@ -165,10 +219,10 @@ def main() -> None:
         "published": df["seen_date"],
         "summary": "",
         "source_domain": df["url"].map(_domain),
-        "fetcher_source": "gdelt_bigquery",
+        "fetcher_source": f"gdelt_bigquery_{args.mode}",
     })
-    out.to_parquet(CORPUS_OUT, index=False)
-    logger.info("Saved corpus-format checkpoint: %d articles -> %s", len(out), CORPUS_OUT)
+    out.to_parquet(corpus_out, index=False)
+    logger.info("Saved corpus-format checkpoint: %d articles -> %s", len(out), corpus_out)
 
 
 if __name__ == "__main__":
