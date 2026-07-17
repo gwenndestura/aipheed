@@ -138,13 +138,21 @@ def _crawl_ids() -> list[str]:
 
 
 def _cdx_domain_crawl(crawl_id: str, domain: str) -> list[dict]:
-    """All food-slugged 200-OK HTML captures for domain in one crawl."""
+    """
+    All food-slugged 200-OK HTML captures for domain in one crawl.
+
+    Only checkpoints a pair when the sweep ENDED CLEANLY (a page returned
+    no rows). If the index server 503s out mid-sweep, the pair is left
+    un-checkpointed so a later --resume retries it — an exhausted-retries
+    "gave up" must never masquerade as "domain has no matches".
+    """
     ckpt = CKPT_DIR / f"{crawl_id}_{domain.replace('/', '_')}.parquet"
     if ckpt.exists():
         return pd.read_parquet(ckpt).to_dict("records")
 
     rows: list[dict] = []
     page = 0
+    clean_end = False
     while True:
         r = _get(
             f"{INDEX_HOST}/{crawl_id}-index",
@@ -161,9 +169,12 @@ def _cdx_domain_crawl(crawl_id: str, domain: str) -> list[dict]:
             timeout=90,
         )
         if r is None:
+            logger.warning("index gave up (503s) on %s %s page %d — will retry later",
+                           crawl_id, domain, page)
             break
         lines = [ln for ln in r.text.strip().splitlines() if ln.startswith("{")]
         if not lines:
+            clean_end = True
             break
         for ln in lines:
             try:
@@ -178,12 +189,16 @@ def _cdx_domain_crawl(crawl_id: str, domain: str) -> list[dict]:
             except Exception:
                 continue
         page += 1
-        time.sleep(1.0)
+        time.sleep(2.0)
         if page > 300:
+            clean_end = True
             break
 
-    CKPT_DIR.mkdir(parents=True, exist_ok=True)
-    pd.DataFrame(rows).to_parquet(ckpt, index=False)
+    if clean_end:
+        CKPT_DIR.mkdir(parents=True, exist_ok=True)
+        pd.DataFrame(rows).to_parquet(ckpt, index=False)
+    # Politeness gap between pairs — the index host throttles sustained load.
+    time.sleep(5.0)
     return rows
 
 
