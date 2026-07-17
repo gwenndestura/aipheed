@@ -21,6 +21,7 @@ Usage:
 
 from __future__ import annotations
 
+import argparse
 import logging
 import re
 import sys
@@ -43,9 +44,15 @@ logging.basicConfig(
 )
 logger = logging.getLogger("enrich_bq")
 
-SRC = Path("data/raw/gdelt_bigquery.parquet")
-OUT = Path("data/raw/gdelt_bigquery_enriched.parquet")
-CKPT = Path("data/raw/checkpoints_enrich/enrich_progress.parquet")
+_ap = argparse.ArgumentParser(description="Enrich articles with real title/lead")
+_ap.add_argument("--src", default="data/raw/gdelt_bigquery.parquet")
+_ap.add_argument("--out", default="data/raw/gdelt_bigquery_enriched.parquet")
+_ap.add_argument("--ckpt", default="data/raw/checkpoints_enrich/enrich_progress.parquet")
+_args = _ap.parse_args()
+
+SRC = Path(_args.src)
+OUT = Path(_args.out)
+CKPT = Path(_args.ckpt)
 
 UA = ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
       "(KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36")
