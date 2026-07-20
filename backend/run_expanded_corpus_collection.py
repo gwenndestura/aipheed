@@ -400,8 +400,10 @@ def main() -> None:
     parser.add_argument("--end", default="2025-12-31")
     parser.add_argument(
         "--sources", nargs="+",
-        choices=["gnews_rss", "rss", "gdelt", "gdelt_bq", "commoncrawl"],
-        default=["gnews_rss", "rss", "gdelt", "gdelt_bq", "commoncrawl"],
+        choices=["gnews_rss", "rss", "gdelt", "gdelt_bq", "gdelt_bq_national",
+                 "commoncrawl"],
+        default=["gnews_rss", "rss", "gdelt", "gdelt_bq", "gdelt_bq_national",
+                 "commoncrawl"],
         help="Which fetchers to run (default: all)",
     )
     parser.add_argument("--no-classify", action="store_true",
@@ -455,6 +457,25 @@ def main() -> None:
                     "gdelt_bq requested but no harvest file found — run "
                     "scripts/gdelt_bigquery_harvest.py first; skipping.",
                 )
+
+        # ── 0a. GDELT BigQuery national sweep (enriched) ──────────────────
+        if "gdelt_bq_national" in args.sources:
+            nat_candidates = [
+                Path("data/raw/gdelt_bq_national_enriched.parquet"),
+                Path("data/raw/gdelt_bq_national_only.parquet"),
+            ]
+            nat_path = next((p for p in nat_candidates if p.exists()), None)
+            if nat_path is not None:
+                nat_df = pd.read_parquet(nat_path)
+                keep = [c for c in ["title", "link", "article_id", "published",
+                                    "summary", "source_domain", "fetcher_source"]
+                        if c in nat_df.columns]
+                nat = nat_df[keep].to_dict(orient="records")
+                logger.info("[0a] GDELT BigQuery national (%s): %d articles",
+                            nat_path.name, len(nat))
+                all_new += nat
+            else:
+                logger.info("gdelt_bq_national: no harvest file yet — skipping.")
 
         # ── 0b. Common Crawl (pre-harvested, pre-enriched) ────────────────
         if "commoncrawl" in args.sources:
