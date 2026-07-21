@@ -329,6 +329,27 @@ def _dedup_against_existing(new_records: list[dict], existing_df: pd.DataFrame) 
 SCORE_CKPT = CHECKPOINT_DIR / "xlmr_scores.parquet"
 
 
+def _save_score_cache(prior: dict[str, dict], rows: list[dict]) -> None:
+    """
+    Persist the score cache as the UNION of everything ever scored.
+
+    `rows` only covers the articles in the current run. Writing it directly
+    would erase scores for articles from other source pools, forcing a
+    multi-hour re-score of work already done. Always merge with what is
+    already on disk, keyed by article_id.
+    """
+    CHECKPOINT_DIR.mkdir(parents=True, exist_ok=True)
+    merged: dict[str, dict] = {}
+    if SCORE_CKPT.exists():
+        for r in pd.read_parquet(SCORE_CKPT).to_dict("records"):
+            merged[r["article_id"]] = r
+    for r in prior.values():
+        merged[r["article_id"]] = r
+    for r in rows:
+        merged[r["article_id"]] = r
+    pd.DataFrame(list(merged.values())).to_parquet(SCORE_CKPT, index=False)
+
+
 def _score_with_xlmr(df: pd.DataFrame) -> pd.DataFrame:
     """
     Score every article with the XLM-RoBERTa zero-shot classifier and merge
@@ -374,8 +395,7 @@ def _score_with_xlmr(df: pd.DataFrame) -> pd.DataFrame:
         })
         since_save += 1
         if since_save >= 200:
-            CHECKPOINT_DIR.mkdir(parents=True, exist_ok=True)
-            pd.DataFrame(rows).to_parquet(SCORE_CKPT, index=False)
+            _save_score_cache(done, rows)
             since_save = 0
             relevant_so_far = sum(1 for r in rows if r["is_relevant"])
             logger.info(
@@ -383,11 +403,9 @@ def _score_with_xlmr(df: pd.DataFrame) -> pd.DataFrame:
                 i, total, i / total * 100, relevant_so_far,
             )
 
-    CHECKPOINT_DIR.mkdir(parents=True, exist_ok=True)
-    scores_df = pd.DataFrame(rows)
-    scores_df.to_parquet(SCORE_CKPT, index=False)
+    _save_score_cache(done, rows)
 
-    return df.merge(scores_df, on="article_id", how="left")
+    return df.merge(pd.DataFrame(rows), on="article_id", how="left")
 
 
 # ---------------------------------------------------------------------------
