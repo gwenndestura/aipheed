@@ -527,6 +527,16 @@ def main() -> None:
                 logger.info("  Google News RSS %d: %d articles", year, len(gnews))
                 all_new += gnews
 
+            # Also fold in any per-LGU Google News checkpoints produced by
+            # scripts/gnews_fetch_only.py --profile lgu (gnews_lgu_<year>).
+            for lgu_ckpt in sorted(CHECKPOINT_DIR.glob("gnews_lgu_*.parquet")):
+                recs = pd.read_parquet(lgu_ckpt).to_dict(orient="records")
+                for r in recs:
+                    r.setdefault("fetcher_source", "gnews_rss")
+                logger.info("  Google News LGU %s: %d articles",
+                            lgu_ckpt.stem, len(recs))
+                all_new += recs
+
         # ── 2. Direct RSS feeds ───────────────────────────────────────────
         # NOTE: RSS feeds are a live window (last 10-50 articles only).
         # The fetcher automatically extends the upper date bound to today so

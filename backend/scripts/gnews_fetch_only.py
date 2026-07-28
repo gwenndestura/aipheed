@@ -42,15 +42,19 @@ def main() -> None:
     parser.add_argument("--start", type=int, default=2020, help="first year")
     parser.add_argument("--end", type=int, default=2025, help="last year")
     parser.add_argument(
-        "--profile", choices=["low", "full"], default="low",
-        help="low: ~300 topical queries, quarterly windows, 1 worker @3s, "
-             "3-min rest between windows (~7.2k requests total). "
-             "full: every query incl. per-LGU, monthly windows.",
+        "--profile", choices=["low", "full", "lgu"], default="low",
+        help="low: ~228 topical queries, quarterly windows (already run). "
+             "lgu: the per-LGU + site-targeted queries the low profile "
+             "skipped (147 LGUs), quarterly windows, same gentle rate; "
+             "writes gnews_lgu_<year>.parquet so it never clobbers the low set. "
+             "full: every query, monthly windows.",
     )
     args = parser.parse_args()
 
-    if args.profile == "low":
-        # Must be set BEFORE the fetcher module is imported.
+    if args.profile in ("low", "lgu"):
+        # Must be set BEFORE the fetcher module is imported. This gentle rate
+        # (1 worker, 3s delay, 3-min window rest) ran all 6 low-profile years
+        # with zero throttle events.
         os.environ.setdefault("AIPHEED_GNEWS_WORKERS", "1")
         os.environ.setdefault("AIPHEED_GNEWS_DELAY", "3.0")
         os.environ.setdefault("AIPHEED_GNEWS_WINDOW_REST", "180")
@@ -62,10 +66,17 @@ def main() -> None:
         fetch_gnews_rss_articles,
     )
 
+    prefix = "gnews_rss"
     if args.profile == "low":
         drop = set(_LGU_QUERIES) | set(_DOMAIN_TARGETED)
         queries = [q for q in GNEWS_RSS_QUERIES if q not in drop]
         window_months = 3
+    elif args.profile == "lgu":
+        # Exactly the queries the low profile skipped — no overlap, so this
+        # is net-new coverage (all 147 CALABARZON LGUs + credible domains).
+        queries = list(dict.fromkeys(_LGU_QUERIES + _DOMAIN_TARGETED))
+        window_months = 3
+        prefix = "gnews_lgu"
     else:
         queries = None
         window_months = 1
@@ -76,7 +87,7 @@ def main() -> None:
     CHECKPOINT_DIR.mkdir(parents=True, exist_ok=True)
 
     for year in range(args.start, args.end + 1):
-        ckpt = CHECKPOINT_DIR / f"gnews_rss_{year}.parquet"
+        ckpt = CHECKPOINT_DIR / f"{prefix}_{year}.parquet"
         if ckpt.exists():
             logger.info("%d already checkpointed (%s) — skipping", year, ckpt.name)
             continue
