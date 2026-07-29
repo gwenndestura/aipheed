@@ -47,32 +47,23 @@ LABELS_PATH   = Path("data/processed/labels.parquet")
 MODEL_PATH    = Path("models/lgbm_best.pkl")
 STUDY_PATH    = Path("models/optuna_study.pkl")
 
-# ── Feature columns (31 features, no province_code, no quarter, no label) ────
-# pct_total_hunger is intentionally excluded: label_stress = (stress_score > global_median) where stress_score = SWS hunger + 2*(food_cpi_yoy - regional_mean),
-# so including it hands the model the answer directly (perfect label leakage → ~100% accuracy).
+# ── Feature columns — reduced to 15 (2026-07-29) ────────────────────────────
+# Cut from 45 to 15 by LightGBM gain importance (averaged over 10 seeds; see
+# scripts/select_top_features.py), with slots RESERVED for the NLP signal so
+# the study's news contribution is retained even though it ranks low at the
+# current article density:
+#   • NLP (5): the 4 FSSI features + trigger_climate (top-ranked trigger)
+#   • Government (10): the 10 highest-importance primary-data features
+# pct_total_hunger stays excluded (label leakage — see label_generator).
 FEATURE_COLS = [
-    # ── NLP / FSSI (secondary data) ──
+    # ── NLP / FSSI (secondary data) — reserved ──
     "FSSI", "FSSI_lag1", "FSSI_lag2", "FSSI_accel",
-    "trigger_market", "trigger_climate", "trigger_employment",
-    "trigger_ofw_remittance", "trigger_fish_kill",
-    # ── Primary data — current quarter ──
-    "food_cpi", "food_cpi_yoy", "rice_price_regular",
-    "unemployment_rate", "poverty_incidence",
-    "food_minus_headline_yoy", "headline_cpi",
-    "ofw_remit_yoy_pct", "fx_usd_php_avg",
-    "diesel_php_per_l", "gasoline_php_per_l", "brent_usd_per_bbl",
-    "tc_count", "tc_severe_flag", "rainfall_anomaly_pct",
-    "drought_alert", "enso_numeric",
-    "commodity_fruit_veg", "commodity_leafy_veg",
-    "commodity_livestock", "commodity_poultry", "commodity_rootcrops",
-    # ── Primary data — 1-quarter lag (momentum) ──
-    "food_cpi_yoy_lag1",         "food_cpi_yoy_accel",
-    "food_minus_headline_yoy_lag1", "food_minus_headline_yoy_accel",
-    "unemployment_rate_lag1",    "unemployment_rate_accel",
-    "ofw_remit_yoy_pct_lag1",    "ofw_remit_yoy_pct_accel",
-    "rainfall_anomaly_pct_lag1", "rainfall_anomaly_pct_accel",
-    "rice_price_regular_lag1",   "rice_price_regular_accel",
-    "diesel_php_per_l_lag1",     "diesel_php_per_l_accel",
+    "trigger_climate",
+    # ── Primary data — top 10 by gain importance ──
+    "food_cpi_yoy", "commodity_livestock", "food_cpi_yoy_lag1",
+    "rainfall_anomaly_pct_accel", "food_minus_headline_yoy_accel",
+    "commodity_leafy_veg", "ofw_remit_yoy_pct_lag1",
+    "rainfall_anomaly_pct_lag1", "commodity_fruit_veg", "food_cpi",
 ]
 
 LABEL_COL    = "label_stress"
