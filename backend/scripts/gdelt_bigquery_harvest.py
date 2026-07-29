@@ -98,6 +98,31 @@ WHERE _PARTITIONTIME >= TIMESTAMP("2020-01-01")
   AND REGEXP_CONTAINS(DocumentIdentifier, r"(?i)({_NATL_SLUGS})")
 """
 
+# Government / PIA / regional desks: in the credibility allowlist but never
+# swept by the national query (which only listed 17 national outlets). These
+# publish LGU-level ayuda / agri / feeding / fish-kill news that national
+# papers skip and GDELT rarely geo-tags — the richest untapped vein of
+# CALABARZON-specific coverage. NO slug filter: these sites are small and
+# food-heavy, so we keep everything and let the NLI scorer decide relevance.
+_GOV_DOMAINS = (
+    r"pia\.gov\.ph|da\.gov\.ph|dswd\.gov\.ph|calabarzon\.da\.gov\.ph|"
+    r"ro4a\.dswd\.gov\.ph|nfa\.gov\.ph|bfar\.da\.gov\.ph|bar\.gov\.ph|"
+    r"da4a\.da\.gov\.ph|ptvnews\.ph|nmis\.gov\.ph|fnri\.dost\.gov\.ph|"
+    r"doh\.gov\.ph|neda\.gov\.ph|cnnphilippines\.com|onenews\.ph|"
+    r"interaksyon\.com|one\.com\.ph|uplb\.edu\.ph"
+)
+
+GOV_QUERY = f"""
+SELECT
+  DocumentIdentifier AS url,
+  DATE(_PARTITIONTIME) AS seen_date,
+  '' AS locations
+FROM `gdelt-bq.gdeltv2.gkg_partitioned`
+WHERE _PARTITIONTIME >= TIMESTAMP("2020-01-01")
+  AND _PARTITIONTIME <  TIMESTAMP("2026-07-01")
+  AND REGEXP_CONTAINS(DocumentIdentifier, r"(?i)({_GOV_DOMAINS})")
+"""
+
 MODES = {
     "calabarzon": {
         "query": CALABARZON_QUERY,
@@ -110,6 +135,12 @@ MODES = {
         "raw_out": Path("data/raw/gdelt_bq_national_raw.parquet"),
         "corpus_out": Path("data/raw/gdelt_bq_national.parquet"),
         "slug_filter": False,  # already slug-filtered in SQL
+    },
+    "gov": {
+        "query": GOV_QUERY,
+        "raw_out": Path("data/raw/gdelt_bq_gov_raw.parquet"),
+        "corpus_out": Path("data/raw/gdelt_bq_gov.parquet"),
+        "slug_filter": False,  # keep all; small food-heavy sites, NLI decides
     },
 }
 
