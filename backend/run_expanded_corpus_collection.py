@@ -419,9 +419,9 @@ def main() -> None:
     parser.add_argument(
         "--sources", nargs="+",
         choices=["gnews_rss", "rss", "gdelt", "gdelt_bq", "gdelt_bq_national",
-                 "commoncrawl"],
+                 "gdelt_bq_gov", "commoncrawl"],
         default=["gnews_rss", "rss", "gdelt", "gdelt_bq", "gdelt_bq_national",
-                 "commoncrawl"],
+                 "gdelt_bq_gov", "commoncrawl"],
         help="Which fetchers to run (default: all)",
     )
     parser.add_argument("--no-classify", action="store_true",
@@ -494,6 +494,20 @@ def main() -> None:
                 all_new += nat
             else:
                 logger.info("gdelt_bq_national: no harvest file yet — skipping.")
+
+        # ── 0a2. GDELT BigQuery government/regional sweep (enriched) ──────
+        if "gdelt_bq_gov" in args.sources:
+            gov_path = Path("data/raw/gdelt_bq_gov_enriched.parquet")
+            if gov_path.exists():
+                gov_df = pd.read_parquet(gov_path)
+                keep = [c for c in ["title", "link", "article_id", "published",
+                                    "summary", "source_domain", "fetcher_source"]
+                        if c in gov_df.columns]
+                gov = gov_df[keep].to_dict(orient="records")
+                logger.info("[0a2] GDELT BigQuery gov/regional: %d articles", len(gov))
+                all_new += gov
+            else:
+                logger.info("gdelt_bq_gov: no harvest file yet — skipping.")
 
         # ── 0b. Common Crawl (pre-harvested, pre-enriched) ────────────────
         if "commoncrawl" in args.sources:
