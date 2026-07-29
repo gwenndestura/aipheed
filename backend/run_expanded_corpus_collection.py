@@ -621,17 +621,6 @@ def main() -> None:
     else:
         logger.info("Skipping relevance scoring (--no-classify flag set)")
 
-    # ── Geocode new articles ──────────────────────────────────────────────
-    # Three-stage PSGC matching (alias table → exact substring → fuzzy) on
-    # the full title + summary text, not the title alone.
-    logger.info("Geocoding new articles to CALABARZON provinces...")
-    from app.ml.corpus.geocoder import geocode_to_province
-    new_df["province_code"] = (
-        new_df["title"].fillna("").astype(str)
-        + ". "
-        + new_df["summary"].fillna("").astype(str)
-    ).apply(geocode_to_province)
-
     # Add quarter column
     def _to_quarter(pub: str) -> str:
         try:
@@ -646,6 +635,20 @@ def main() -> None:
     combined = pd.concat([existing_df, new_df], ignore_index=True)
     combined = combined.drop_duplicates(subset=["article_id"], keep="first")
     combined = combined.drop_duplicates(subset=["link"], keep="first")
+
+    # ── Geocode the FULL combined corpus ──────────────────────────────────
+    # Three-stage PSGC matching (alias table → exact substring → fuzzy) on
+    # title + summary. Geocoding the whole set (not just new rows) guarantees
+    # every row reflects the CURRENT geocoder — otherwise a merge keeps stale
+    # province_code from existing rows written by an earlier geocoder version,
+    # silently undercounting CALABARZON coverage.
+    logger.info("Geocoding combined corpus to CALABARZON provinces...")
+    from app.ml.corpus.geocoder import geocode_to_province
+    combined["province_code"] = (
+        combined["title"].fillna("").astype(str)
+        + ". "
+        + combined["summary"].fillna("").astype(str)
+    ).apply(geocode_to_province)
 
     logger.info(
         "Combined corpus: %d articles (%d existing + %d new)",
