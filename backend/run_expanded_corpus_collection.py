@@ -419,9 +419,9 @@ def main() -> None:
     parser.add_argument(
         "--sources", nargs="+",
         choices=["gnews_rss", "rss", "gdelt", "gdelt_bq", "gdelt_bq_national",
-                 "gdelt_bq_gov", "commoncrawl"],
+                 "gdelt_bq_gov", "gdelt_bq_recovered", "commoncrawl"],
         default=["gnews_rss", "rss", "gdelt", "gdelt_bq", "gdelt_bq_national",
-                 "gdelt_bq_gov", "commoncrawl"],
+                 "gdelt_bq_gov", "gdelt_bq_recovered", "commoncrawl"],
         help="Which fetchers to run (default: all)",
     )
     parser.add_argument("--no-classify", action="store_true",
@@ -508,6 +508,29 @@ def main() -> None:
                 all_new += gov
             else:
                 logger.info("gdelt_bq_gov: no harvest file yet — skipping.")
+
+        # ── 0a3. GDELT CALABARZON recovery pool (GDELT-geocoded) ──────────
+        # Articles GDELT tagged to a CALABARZON province from full body text
+        # but the old slug/title filters dropped. province_code is carried
+        # through (authoritative) and coalesced during geocoding.
+        if "gdelt_bq_recovered" in args.sources:
+            rec_candidates = [
+                Path("data/raw/gdelt_calabarzon_recovered_enriched.parquet"),
+                Path("data/raw/gdelt_calabarzon_recovered.parquet"),
+            ]
+            rec_path = next((p for p in rec_candidates if p.exists()), None)
+            if rec_path is not None:
+                rec_df = pd.read_parquet(rec_path)
+                keep = [c for c in ["title", "link", "article_id", "published",
+                                    "summary", "source_domain", "fetcher_source",
+                                    "province_code"]
+                        if c in rec_df.columns]
+                rec = rec_df[keep].to_dict(orient="records")
+                logger.info("[0a3] GDELT CALABARZON recovery (%s): %d articles",
+                            rec_path.name, len(rec))
+                all_new += rec
+            else:
+                logger.info("gdelt_bq_recovered: no recovery file yet — skipping.")
 
         # ── 0b. Common Crawl (pre-harvested, pre-enriched) ────────────────
         if "commoncrawl" in args.sources:
@@ -652,17 +675,22 @@ def main() -> None:
 
     # ── Geocode the FULL combined corpus ──────────────────────────────────
     # Three-stage PSGC matching (alias table → exact substring → fuzzy) on
-    # title + summary. Geocoding the whole set (not just new rows) guarantees
-    # every row reflects the CURRENT geocoder — otherwise a merge keeps stale
-    # province_code from existing rows written by an earlier geocoder version,
-    # silently undercounting CALABARZON coverage.
+    # title + summary, COALESCED onto any authoritative province_code already
+    # attached upstream (GDELT V2Locations full-body geocode, which is more
+    # reliable than title-only matching). Text geocoding only fills rows that
+    # arrive without a province tag; it never overwrites a GDELT tag.
     logger.info("Geocoding combined corpus to CALABARZON provinces...")
     from app.ml.corpus.geocoder import geocode_to_province
-    combined["province_code"] = (
+    prior_pc = (combined["province_code"]
+                if "province_code" in combined.columns
+                else pd.Series([None] * len(combined), index=combined.index))
+    text_pc = (
         combined["title"].fillna("").astype(str)
         + ". "
         + combined["summary"].fillna("").astype(str)
     ).apply(geocode_to_province)
+    # Prefer the authoritative GDELT tag; fall back to text geocode.
+    combined["province_code"] = prior_pc.where(prior_pc.notna(), text_pc)
 
     logger.info(
         "Combined corpus: %d articles (%d existing + %d new)",
