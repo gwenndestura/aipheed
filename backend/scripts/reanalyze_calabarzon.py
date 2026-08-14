@@ -59,6 +59,9 @@ OUT = Path("data/processed/reanalysis")
 PROGRESS = OUT / "progress.parquet"
 
 ENRICHED_SOURCES = [
+    # titleonly_enriched first so its recovered bodies win the best-text
+    # dedup over the original title-only GDELT REST captures.
+    "titleonly_enriched",
     "gdelt_calabarzon_recovered_enriched", "gdelt_bq_national_enriched",
     "gdelt_bigquery_enriched", "gdelt_bq_gov_enriched",
     "eventregistry_raw", "commoncrawl",
