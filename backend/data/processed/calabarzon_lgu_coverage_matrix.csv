@@ -56,19 +56,19 @@ Cavite,Tagaytay,042119000,covered_relevant
 Cavite,Tanza,042120000,covered_relevant
 Cavite,Ternate,042121000,mentioned_only
 Cavite,Trece Martires,042122000,mentioned_only
-Laguna,Alaminos,043401000,mentioned_only
+Laguna,Alaminos,043401000,covered_relevant
 Laguna,Bay,043402000,mentioned_only
 Laguna,Biñan,043403000,covered_relevant
 Laguna,Cabuyao,043404000,mentioned_only
 Laguna,Calamba,043405000,covered_relevant
-Laguna,Calauan,043406000,mentioned_only
+Laguna,Calauan,043406000,covered_relevant
 Laguna,Cavinti,043407000,mentioned_only
 Laguna,Famy,043408000,absent
-Laguna,Kalayaan,043409000,mentioned_only
+Laguna,Kalayaan,043409000,covered_relevant
 Laguna,Liliw,043410000,covered_relevant
 Laguna,Los Baños,043411000,covered_relevant
 Laguna,Luisiana,043412000,covered_relevant
-Laguna,Lumban,043413000,mentioned_only
+Laguna,Lumban,043413000,covered_relevant
 Laguna,Mabitac,043414000,covered_relevant
 Laguna,Magdalena,043415000,mentioned_only
 Laguna,Majayjay,043416000,mentioned_only
@@ -138,6 +138,6 @@ Rizal,Morong,045809000,mentioned_only
 Rizal,Pililla,045810000,mentioned_only
 Rizal,Rodriguez,045808000,covered_relevant
 Rizal,San Mateo,045811000,mentioned_only
-Rizal,Tanay,045812000,mentioned_only
+Rizal,Tanay,045812000,covered_relevant
 Rizal,Taytay,045813000,covered_relevant
 Rizal,Teresa,045814000,mentioned_only
