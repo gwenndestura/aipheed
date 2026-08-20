@@ -36,12 +36,12 @@ Batangas,Tuy,041034000,absent
 Cavite,Alfonso,042101000,mentioned_only
 Cavite,Amadeo,042102000,mentioned_only
 Cavite,Bacoor,042103000,covered_relevant
-Cavite,Carmona,042104000,mentioned_only
-Cavite,Cavite City,042105000,mentioned_only
+Cavite,Carmona,042104000,covered_relevant
+Cavite,Cavite City,042105000,covered_relevant
 Cavite,Dasmariñas,042106000,mentioned_only
 Cavite,Gen. Mariano Alvarez,042123000,mentioned_only
 Cavite,General Emilio Aguinaldo,042107000,mentioned_only
-Cavite,General Trias,042108000,mentioned_only
+Cavite,General Trias,042108000,covered_relevant
 Cavite,Imus,042109000,covered_relevant
 Cavite,Indang,042110000,mentioned_only
 Cavite,Kawit,042111000,mentioned_only
@@ -60,7 +60,7 @@ Laguna,Alaminos,043401000,mentioned_only
 Laguna,Bay,043402000,mentioned_only
 Laguna,Biñan,043403000,mentioned_only
 Laguna,Cabuyao,043404000,mentioned_only
-Laguna,Calamba,043405000,mentioned_only
+Laguna,Calamba,043405000,covered_relevant
 Laguna,Calauan,043406000,mentioned_only
 Laguna,Cavinti,043407000,mentioned_only
 Laguna,Famy,043408000,absent
@@ -116,7 +116,7 @@ Quezon,Pitogo,045634000,mentioned_only
 Quezon,Plaridel,045635000,mentioned_only
 Quezon,Polillo,045636000,mentioned_only
 Quezon,Quezon,045637000,absent
-Quezon,Real,045638000,mentioned_only
+Quezon,Real,045638000,covered_relevant
 Quezon,Sampaloc,045639000,mentioned_only
 Quezon,San Andres,045640000,mentioned_only
 Quezon,San Antonio,045641000,mentioned_only
@@ -136,7 +136,7 @@ Rizal,Cardona,045806000,mentioned_only
 Rizal,Jala-Jala,045807000,absent
 Rizal,Morong,045809000,mentioned_only
 Rizal,Pililla,045810000,mentioned_only
-Rizal,Rodriguez,045808000,mentioned_only
+Rizal,Rodriguez,045808000,covered_relevant
 Rizal,San Mateo,045811000,mentioned_only
 Rizal,Tanay,045812000,mentioned_only
 Rizal,Taytay,045813000,mentioned_only

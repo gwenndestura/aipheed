@@ -10,7 +10,7 @@ Faithful to the thesis:
     data/processed/reanalysis/relevant.parquet (the retained HIGH/MEDIUM set) —
     NOT the looser NLI>=0.30 corpus.
   * Rich thesis metadata preserved: food-security dimension (A-F), event_type,
-    severity, affected commodity/population, is_direct_food_insecurity, NLI
+    affected commodity/population, is_direct_food_insecurity, NLI
     scores, and the reanalysis relevance_reason.
 
 New this session (the enhancement the thesis lacked):
@@ -146,14 +146,14 @@ def _load_union() -> pd.DataFrame:
     corpus["core_score"] = corpus["food_insecurity_score"]
     corpus = corpus.rename(columns={"link": "link", "summary": "_corpus_lead"})
     corpus["_source"] = "corpus_recall"
-    for col in ("severity", "affected_commodity", "affected_population",
+    for col in ("affected_commodity", "affected_population",
                 "relevance_reason", "is_direct_food_insecurity"):
         corpus[col] = None
 
     keep = ["article_id", "title", "link", "published", "source_domain", "province",
             "province_code", "city_municipality", "food_security_dimension",
             "food_security_dimension_label", "top_hypothesis", "event_type",
-            "severity", "affected_commodity", "affected_population",
+            "affected_commodity", "affected_population",
             "is_direct_food_insecurity", "food_insecurity_relevance", "core_score",
             "relevance_reason", "_source"]
     both = pd.concat([strict[[c for c in keep if c in strict.columns]],
@@ -209,7 +209,7 @@ def build() -> None:
         "title", "publication_date", "news_source", "author", "url",
         "content_lead", "province_final", "city_municipality_final", "barangay_final",
         "relevance_tier", "food_security_dimension", "food_insecurity_category",
-        "food_insecurity_topics", "event_type", "severity",
+        "food_insecurity_topics", "event_type",
         "affected_commodity", "affected_population", "is_direct_food_insecurity",
         "relevance_summary", "relevance_reason", "relevance_score", "match_level",
         "needs_review", "data_source", "article_id",
@@ -406,7 +406,7 @@ require a locality cue) and a non-CALABARZON conflict guard.
 ## Columns
 title, publication_date, news_source, author*, url, content_lead*, province,
 city_municipality, barangay, relevance_tier (HIGH/MEDIUM), food_security_dimension
-(A–F), food_insecurity_category, food_insecurity_topics, event_type, severity,
+(A–F), food_insecurity_category, food_insecurity_topics, event_type,
 affected_commodity*, affected_population*, is_direct_food_insecurity,
 relevance_summary, relevance_reason*, relevance_score, match_level, needs_review,
 data_source, article_id.  (* populated for strict_reanalysis rows; sparse for
