@@ -284,7 +284,10 @@ def _clean(out: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame]:
     from app.ml.corpus.location_geocoder import _OTHER_LOC
     txt = (out["title"].fillna("") + " " + out["content_lead"].fillna("")).astype(str)
     has_lead = out["content_lead"].fillna("").str.len() > 0
-    has_food = txt.map(lambda t: bool(FOOD_ANCHOR.search(t))) | ~has_lead
+    # ASF (African Swine Fever) is a food-anchor: it directly hits pork/livestock
+    # food supply, but the noun "ASF" alone isn't in the FOOD_ANCHOR lexicon.
+    _asf = re.compile(r"\b(asf|african swine fever|swine fever)\b", re.I)
+    has_food = txt.map(lambda t: bool(FOOD_ANCHOR.search(t)) or bool(_asf.search(t))) | ~has_lead
     has_topic = txt.map(lambda t: len(_matched_topics(t)) > 0)
     has_geo = out["province"].notna()
     has_lgu = out["city_municipality"].notna()
