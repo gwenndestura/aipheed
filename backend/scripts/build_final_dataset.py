@@ -77,7 +77,8 @@ _NEGATIVE = re.compile(
     r"bay area|california|new york|texas|florida|united states|\bu\.?s\.?a?\b|"
     r"london|dubai|singapore|hong kong|canada|australia|"                    # foreign
     r"recipe|dishes you can cook|101: getting to know|must-try|restaurants|"
-    r"comfort food|good food in a relationship)\b",                          # food-culture
+    r"comfort food|good food in a relationship|"                            # food-culture
+    r"hunger[- ]strike|hunger strikers)\b",                                  # protest, not food insecurity
     re.I)
 
 

@@ -1,8 +1,8 @@
 # CALABARZON Food-Insecurity News Dataset
 
-**Rows:** 163 articles · **Provinces:** {'Batangas': 82, 'Quezon': 30, 'Laguna': 28, 'Cavite': 16, 'Rizal': 7}
-**Distinct cities/municipalities:** 25 of 142 · **barangay-level rows:** 1
-**By source:** {'corpus_recall': 97, 'strict_reanalysis': 66}
+**Rows:** 380 articles · **Provinces:** {'Batangas': 131, 'Laguna': 82, 'Quezon': 70, 'Cavite': 64, 'Rizal': 33}
+**Distinct cities/municipalities:** 54 of 142 · **barangay-level rows:** 8
+**By source:** {'corpus_recall': 314, 'strict_reanalysis': 66}
 
 ## What this is
 News articles that provide usable evidence about food insecurity (or its clear
@@ -35,7 +35,7 @@ NLI classifier (10 food-insecurity hypotheses):
   5. **Syndication dedup** — same story under a near-identical title collapsed to one
      copy (strict version kept).
 Every dropped row and its failing gate is logged to
-`calabarzon_dataset_dropped_audit.csv` (removed this run: {'no_food_anchor+no_food_insecurity_topic': 229, 'other_region_subject+no_food_anchor+no_food_insecurity_topic': 85, 'no_food_insecurity_topic': 52, 'no_food_anchor': 48, 'off_topic_energy_foreign_or_culture+no_food_anchor+no_food_insecurity_topic': 31, 'other_region_subject': 22, 'other_region_subject+no_food_anchor': 17, 'off_topic_energy_foreign_or_culture': 11, 'needs_review_weak_signal': 10, 'off_topic_energy_foreign_or_culture+no_food_anchor': 8, 'other_region_subject+off_topic_energy_foreign_or_culture+no_food_anchor+no_food_insecurity_topic': 6, 'no_calabarzon_province+other_region_subject': 6, 'off_topic_energy_foreign_or_culture+no_food_insecurity_topic': 4, 'other_region_subject+off_topic_energy_foreign_or_culture': 3, 'no_calabarzon_province+other_region_subject+no_food_anchor': 1, 'other_region_subject+no_food_insecurity_topic': 1, 'no_calabarzon_province': 1, 'other_region_subject+off_topic_energy_foreign_or_culture+no_food_anchor': 1}).
+`calabarzon_dataset_dropped_audit.csv` (removed this run: {'no_food_anchor+no_food_insecurity_topic': 229, 'other_region_subject+no_food_anchor+no_food_insecurity_topic': 85, 'no_food_insecurity_topic': 52, 'no_food_anchor': 48, 'off_topic_energy_foreign_or_culture+no_food_anchor+no_food_insecurity_topic': 31, 'other_region_subject': 22, 'other_region_subject+no_food_anchor': 17, 'off_topic_energy_foreign_or_culture': 13, 'needs_review_weak_signal': 11, 'off_topic_energy_foreign_or_culture+no_food_anchor': 8, 'other_region_subject+off_topic_energy_foreign_or_culture+no_food_anchor+no_food_insecurity_topic': 6, 'no_calabarzon_province+other_region_subject': 6, 'off_topic_energy_foreign_or_culture+no_food_insecurity_topic': 4, 'other_region_subject+off_topic_energy_foreign_or_culture': 3, 'no_calabarzon_province+other_region_subject+no_food_anchor': 1, 'other_region_subject+no_food_insecurity_topic': 1, 'no_calabarzon_province': 1, 'other_region_subject+off_topic_energy_foreign_or_culture+no_food_anchor': 1}).
 
 ## Geography (142-LGU enhancement)
 Re-geocoded with the full **142-LGU PSGC gazetteer** geocoder (province → city/
@@ -52,13 +52,13 @@ data_source, article_id.  (* populated for strict_reanalysis rows; sparse for
 corpus_recall rows.)
 
 `needs_review` = True for the softest rows (only indirect poverty/livelihood/supply
-signals) — 0 of 163 rows, for an optional eyeball.
+signals) — 0 of 380 rows, for an optional eyeball.
 
 ## Known limitations (scope notes)
 - **Residual precision (~99%):** the gates are lexical, so ~1 row may survive on an
   incidental token (e.g. a "Cordillera vegetable prices" story pre-tagged to a
   CALABARZON province). Retained for reproducibility; the audit CSV lists all drops.
-- **Coverage ceiling:** 25/142 LGUs have a qualifying article. Targeted collection
+- **Coverage ceiling:** 54/142 LGUs have a qualifying article. Targeted collection
   via two independent global news indexes (GDELT, Event Registry) confirmed most
   remaining municipalities have no food-insecurity news — a data-availability limit.
   See `calabarzon_lgu_coverage_matrix.csv` (covered / mentioned-only / absent).
