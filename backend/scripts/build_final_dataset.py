@@ -149,6 +149,10 @@ def _load_union() -> pd.DataFrame:
     corpus["core_score"] = corpus["food_insecurity_score"]
     corpus = corpus.rename(columns={"link": "link", "summary": "_corpus_lead"})
     corpus["_source"] = "corpus_recall"
+    # Climate-shock rows (added by collect_climate_shock) are food-security
+    # determinants without a food-anchor term; flag them so _clean() exempts them.
+    corpus["is_climate_shock"] = (corpus.get("fetcher_source") == "climate_shock") \
+        if "fetcher_source" in corpus.columns else False
     for col in ("affected_commodity", "affected_population",
                 "relevance_reason", "is_direct_food_insecurity"):
         corpus[col] = None
@@ -158,11 +162,14 @@ def _load_union() -> pd.DataFrame:
             "food_security_dimension_label", "top_hypothesis", "event_type",
             "affected_commodity", "affected_population",
             "is_direct_food_insecurity", "food_insecurity_relevance", "core_score",
-            "relevance_reason", "_source"]
+            "relevance_reason", "is_climate_shock", "_source"]
     both = pd.concat([strict[[c for c in keep if c in strict.columns]],
                       corpus[[c for c in keep if c in corpus.columns]]],
                      ignore_index=True)
-    print(f"union: {len(strict)} strict + {len(corpus)} corpus-recall = {len(both)}")
+    both["is_climate_shock"] = both["is_climate_shock"].fillna(False) \
+        if "is_climate_shock" in both.columns else False
+    print(f"union: {len(strict)} strict + {len(corpus)} corpus-recall = {len(both)} "
+          f"({int(both['is_climate_shock'].sum())} climate-shock)")
     return both
 
 
@@ -215,7 +222,7 @@ def build() -> None:
         "food_insecurity_topics", "event_type",
         "affected_commodity", "affected_population", "is_direct_food_insecurity",
         "relevance_summary", "relevance_reason", "relevance_score", "match_level",
-        "needs_review", "data_source", "article_id",
+        "needs_review", "data_source", "article_id", "is_climate_shock",
     ]].rename(columns={
         "province_final": "province",
         "city_municipality_final": "city_municipality",
@@ -251,13 +258,17 @@ def build() -> None:
         out = out[~out["needs_review"]].copy()
         print(f"after dropping needs_review softies: {len(out)} rows (-{len(review)})")
 
+    n_clim = int(out["is_climate_shock"].fillna(False).sum()) if "is_climate_shock" in out.columns else 0
+    out = out.drop(columns=["is_climate_shock"], errors="ignore")
+    dropped = dropped.drop(columns=["is_climate_shock"], errors="ignore")
     out = out.sort_values(["province", "city_municipality", "publication_date"], na_position="last")
     OUTDIR.mkdir(parents=True, exist_ok=True)
     out.to_parquet(OUTDIR / "calabarzon_food_insecurity_dataset.parquet", index=False)
     _safe_csv(out, OUTDIR / "calabarzon_food_insecurity_dataset.csv")
     _safe_csv(dropped.sort_values("drop_reason"),
               OUTDIR / "calabarzon_dataset_dropped_audit.csv")
-    print(f"final dataset: {len(out)} rows -> calabarzon_food_insecurity_dataset.(parquet|csv)")
+    print(f"final dataset: {len(out)} rows -> calabarzon_food_insecurity_dataset.(parquet|csv)"
+          f" | climate-shock determinant rows: {n_clim}")
     print("province:", out["province"].value_counts(dropna=False).to_dict())
     print("distinct city/municipality:", out["city_municipality"].nunique(),
           "| barangay-level rows:", int(out["barangay"].notna().sum()))
@@ -287,7 +298,14 @@ def _clean(out: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame]:
     # ASF (African Swine Fever) is a food-anchor: it directly hits pork/livestock
     # food supply, but the noun "ASF" alone isn't in the FOOD_ANCHOR lexicon.
     _asf = re.compile(r"\b(asf|african swine fever|swine fever)\b", re.I)
-    has_food = txt.map(lambda t: bool(FOOD_ANCHOR.search(t)) or bool(_asf.search(t))) | ~has_lead
+    # Climate-shock rows are food-security determinants (FAO stability/availability
+    # pillar) without a food-anchor term — a typhoon/flood hitting CALABARZON — so
+    # they are exempt from the food-anchor requirement. They are pre-guarded for
+    # geography (CALABARZON actually hit, not a Metro-Manila/national/foreign wire)
+    # in collect_climate_shock; the geo + other-region + noise gates below still apply.
+    climate = out["is_climate_shock"].fillna(False) if "is_climate_shock" in out.columns \
+        else pd.Series(False, index=out.index)
+    has_food = txt.map(lambda t: bool(FOOD_ANCHOR.search(t)) or bool(_asf.search(t))) | ~has_lead | climate
     has_topic = txt.map(lambda t: len(_matched_topics(t)) > 0)
     has_geo = out["province"].notna()
     has_lgu = out["city_municipality"].notna()

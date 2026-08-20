@@ -2,7 +2,7 @@
 Batangas,Agoncillo,041001000,covered_relevant
 Batangas,Alitagtag,041002000,mentioned_only
 Batangas,Balayan,041003000,covered_relevant
-Batangas,Balete,041004000,mentioned_only
+Batangas,Balete,041004000,covered_relevant
 Batangas,Batangas City,041005000,covered_relevant
 Batangas,Bauan,041006000,covered_relevant
 Batangas,Calaca,041007000,covered_relevant
@@ -10,23 +10,23 @@ Batangas,Calatagan,041008000,covered_relevant
 Batangas,Cuenca,041009000,covered_relevant
 Batangas,Ibaan,041010000,covered_relevant
 Batangas,Laurel,041011000,covered_relevant
-Batangas,Lemery,041012000,mentioned_only
+Batangas,Lemery,041012000,covered_relevant
 Batangas,Lian,041013000,covered_relevant
 Batangas,Lipa,041014000,covered_relevant
 Batangas,Lobo,041015000,covered_relevant
 Batangas,Mabini,041016000,covered_relevant
 Batangas,Malvar,041017000,mentioned_only
-Batangas,Mataasnakahoy,041018000,mentioned_only
+Batangas,Mataasnakahoy,041018000,covered_relevant
 Batangas,Nasugbu,041019000,covered_relevant
 Batangas,Padre Garcia,041020000,mentioned_only
 Batangas,Rosario,041021000,covered_relevant
 Batangas,San Jose,041022000,covered_relevant
 Batangas,San Juan,041023000,covered_relevant
-Batangas,San Luis,041024000,mentioned_only
+Batangas,San Luis,041024000,covered_relevant
 Batangas,San Nicolas,041025000,covered_relevant
 Batangas,San Pascual,041026000,mentioned_only
 Batangas,Santa Teresita,041027000,mentioned_only
-Batangas,Sto. Tomas,041028000,mentioned_only
+Batangas,Sto. Tomas,041028000,covered_relevant
 Batangas,Taal,041029000,covered_relevant
 Batangas,Talisay,041030000,covered_relevant
 Batangas,Tanauan,041031000,covered_relevant
@@ -44,7 +44,7 @@ Cavite,General Emilio Aguinaldo,042107000,mentioned_only
 Cavite,General Trias,042108000,covered_relevant
 Cavite,Imus,042109000,covered_relevant
 Cavite,Indang,042110000,mentioned_only
-Cavite,Kawit,042111000,mentioned_only
+Cavite,Kawit,042111000,covered_relevant
 Cavite,Magallanes,042112000,mentioned_only
 Cavite,Maragondon,042113000,covered_relevant
 Cavite,Mendez,042114000,mentioned_only
@@ -55,7 +55,7 @@ Cavite,Silang,042118000,covered_relevant
 Cavite,Tagaytay,042119000,covered_relevant
 Cavite,Tanza,042120000,covered_relevant
 Cavite,Ternate,042121000,covered_relevant
-Cavite,Trece Martires,042122000,mentioned_only
+Cavite,Trece Martires,042122000,covered_relevant
 Laguna,Alaminos,043401000,covered_relevant
 Laguna,Bay,043402000,mentioned_only
 Laguna,Biñan,043403000,covered_relevant
@@ -72,7 +72,7 @@ Laguna,Lumban,043413000,covered_relevant
 Laguna,Mabitac,043414000,covered_relevant
 Laguna,Magdalena,043415000,mentioned_only
 Laguna,Majayjay,043416000,covered_relevant
-Laguna,Nagcarlan,043417000,mentioned_only
+Laguna,Nagcarlan,043417000,covered_relevant
 Laguna,Paete,043418000,mentioned_only
 Laguna,Pagsanjan,043419000,mentioned_only
 Laguna,Pakil,043420000,mentioned_only
@@ -83,24 +83,24 @@ Laguna,San Pablo,043424000,covered_relevant
 Laguna,San Pedro,043425000,covered_relevant
 Laguna,Santa Cruz,043426000,mentioned_only
 Laguna,Santa Maria,043427000,mentioned_only
-Laguna,Santa Rosa,043428000,mentioned_only
+Laguna,Santa Rosa,043428000,covered_relevant
 Laguna,Siniloan,043429000,mentioned_only
 Laguna,Victoria,043430000,covered_relevant
 Quezon,Agdangan,045601000,mentioned_only
 Quezon,Alabat,045602000,covered_relevant
 Quezon,Atimonan,045603000,covered_relevant
 Quezon,Buenavista,045605000,mentioned_only
-Quezon,Burdeos,045606000,mentioned_only
-Quezon,Calauag,045607000,mentioned_only
+Quezon,Burdeos,045606000,covered_relevant
+Quezon,Calauag,045607000,covered_relevant
 Quezon,Candelaria,045608000,mentioned_only
-Quezon,Catanauan,045610000,mentioned_only
+Quezon,Catanauan,045610000,covered_relevant
 Quezon,Dolores,045615000,mentioned_only
 Quezon,General Luna,045616000,mentioned_only
 Quezon,General Nakar,045617000,covered_relevant
 Quezon,Guinayangan,045618000,covered_relevant
 Quezon,Gumaca,045619000,covered_relevant
-Quezon,Infanta,045620000,mentioned_only
-Quezon,Jomalig,045621000,mentioned_only
+Quezon,Infanta,045620000,covered_relevant
+Quezon,Jomalig,045621000,covered_relevant
 Quezon,Lopez,045622000,covered_relevant
 Quezon,Lucban,045623000,covered_relevant
 Quezon,Lucena,045624000,covered_relevant
@@ -120,7 +120,7 @@ Quezon,Real,045638000,covered_relevant
 Quezon,Sampaloc,045639000,mentioned_only
 Quezon,San Andres,045640000,mentioned_only
 Quezon,San Antonio,045641000,mentioned_only
-Quezon,San Francisco,045642000,mentioned_only
+Quezon,San Francisco,045642000,covered_relevant
 Quezon,San Narciso,045644000,mentioned_only
 Quezon,Sariaya,045645000,covered_relevant
 Quezon,Tagkawayan,045646000,covered_relevant
@@ -134,10 +134,10 @@ Rizal,Binangonan,045804000,covered_relevant
 Rizal,Cainta,045805000,covered_relevant
 Rizal,Cardona,045806000,covered_relevant
 Rizal,Jala-Jala,045807000,absent
-Rizal,Morong,045809000,mentioned_only
+Rizal,Morong,045809000,covered_relevant
 Rizal,Pililla,045810000,covered_relevant
 Rizal,Rodriguez,045808000,covered_relevant
 Rizal,San Mateo,045811000,covered_relevant
 Rizal,Tanay,045812000,covered_relevant
 Rizal,Taytay,045813000,covered_relevant
-Rizal,Teresa,045814000,mentioned_only
+Rizal,Teresa,045814000,covered_relevant
