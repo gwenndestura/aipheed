@@ -53,7 +53,7 @@ TOPIC_PATTERNS: dict[str, re.Pattern] = {
     "crop_losses_disaster": re.compile(r"\b(crop damage|agri damage|agricultural damage|agri.?fisher|typhoon|bagyo|flood|baha|drought|tagtuyot|el ni|la ni|calamity|landslide)", re.I),
     "fisheries_livestock": re.compile(r"\b(fish|isda|bangus|tilapia|milkfish|fishkill|fish kill|red tide|poultry|manok|hog|swine|\basf\b|livestock|bird flu)", re.I),
     "food_assistance_programs": re.compile(r"\b(ayuda|relief goods|kadiwa|\bdswd\b|4ps|pantawid|feeding program|food pack|community pantry|libreng bigas|rice subsidy)\b", re.I),
-    "livelihood_income": re.compile(r"\b(livelihood|kabuhayan|income|unemploy|jobless|no work|remittance|\bofw\b|wage)\b", re.I),
+    "livelihood_income": re.compile(r"\b(livelihood|kabuhayan|income|unemploy|jobless|no work|remittance|\bofw\b|wage|job loss|job cut|lost (their )?jobs|laid off|lay ?off|retrench|displaced workers?|\btupad\b|plant (shut ?down|closure|closed)|factory (shut ?down|closure)|mill (shut ?down|closure)|(shut ?down|closure|closed) (its |the )?(plant|factory|mill)|ceased operations|nawalan ng (trabaho|hanapbuhay)|tanggal sa trabaho)\b", re.I),
     "supply_chain_distribution": re.compile(r"\b(supply|shortage|kakulangan|distribution|transport|logistics|road closure|blockade)\b", re.I),
     "pests_crop_disease": re.compile(r"\b(pest|infestation|blight|fall armyworm|bird flu|\basf\b|african swine fever|rice black bug|disease outbreak)\b", re.I),
 }
@@ -191,12 +191,13 @@ CATEGORY = {
     "T7": ("D", "Food stability (disaster / displacement)"),
     "T8": ("D", "Food stability (unrest)"),
     "T9": ("F", "Livelihood affecting food access"),
+    "T10": ("F", "Livelihood / employment loss affecting food access"),
 }
 EVENT_MAP = {
     "T1": "food_price_change", "T2": "malnutrition_nutrition", "T3": "food_assistance",
     "T6": "crop_production_loss", "T1b": "fishery_loss", "T4": "poverty_hardship",
     "T5": "supply_disruption", "T7": "disaster_displacement", "T8": "unrest_disruption",
-    "T9": "remittance_shock",
+    "T9": "remittance_shock", "T10": "employment_loss",
 }
 
 
@@ -239,10 +240,11 @@ def _load_union() -> pd.DataFrame:
     corpus["core_score"] = corpus["food_insecurity_score"]
     corpus = corpus.rename(columns={"link": "link", "summary": "_corpus_lead"})
     corpus["_source"] = "corpus_recall"
-    # Climate-shock rows (added by collect_climate_shock) are food-security
-    # determinants without a food-anchor term; flag them so _clean() exempts them.
-    corpus["is_climate_shock"] = (corpus.get("fetcher_source") == "climate_shock") \
-        if "fetcher_source" in corpus.columns else False
+    # Climate-shock and economic-shock rows are food-security determinants without a
+    # food-anchor term; flag them so _clean() and the softie cut exempt them.
+    fs = corpus.get("fetcher_source")
+    corpus["is_climate_shock"] = (fs == "climate_shock") if fs is not None else False
+    corpus["is_economic_shock"] = (fs == "economic_shock") if fs is not None else False
     for col in ("affected_commodity", "affected_population",
                 "relevance_reason", "is_direct_food_insecurity"):
         corpus[col] = None
@@ -252,14 +254,15 @@ def _load_union() -> pd.DataFrame:
             "food_security_dimension_label", "top_hypothesis", "event_type",
             "affected_commodity", "affected_population",
             "is_direct_food_insecurity", "food_insecurity_relevance", "core_score",
-            "relevance_reason", "is_climate_shock", "_source"]
+            "relevance_reason", "is_climate_shock", "is_economic_shock", "_source"]
     both = pd.concat([strict[[c for c in keep if c in strict.columns]],
                       corpus[[c for c in keep if c in corpus.columns]]],
                      ignore_index=True)
-    both["is_climate_shock"] = both["is_climate_shock"].fillna(False) \
-        if "is_climate_shock" in both.columns else False
+    for col in ("is_climate_shock", "is_economic_shock"):
+        both[col] = both[col].fillna(False) if col in both.columns else False
     print(f"union: {len(strict)} strict + {len(corpus)} corpus-recall = {len(both)} "
-          f"({int(both['is_climate_shock'].sum())} climate-shock)")
+          f"({int(both['is_climate_shock'].sum())} climate-shock, "
+          f"{int(both['is_economic_shock'].sum())} economic-shock)")
     return both
 
 
@@ -293,6 +296,9 @@ def build() -> None:
     _WEAK = {"poverty_food_access", "livelihood_income", "supply_chain_distribution"}
     df["needs_review"] = df["food_insecurity_topics"].map(
         lambda s: bool(s) and set(s.split(",")).issubset(_WEAK))
+    # Economic-shock rows carry a livelihood-only topic set but are an explicit,
+    # geo-guarded determinant class (job loss / closure) — never soft review-only.
+    df.loc[df["is_economic_shock"].fillna(False), "needs_review"] = False
     df["relevance_summary"] = df.apply(_summary_row, axis=1)
     df["author"] = None
     df["data_source"] = df["_source"]
@@ -312,7 +318,7 @@ def build() -> None:
         "food_insecurity_topics", "event_type",
         "affected_commodity", "affected_population", "is_direct_food_insecurity",
         "relevance_summary", "relevance_reason", "relevance_score", "match_level",
-        "needs_review", "data_source", "article_id", "is_climate_shock",
+        "needs_review", "data_source", "article_id", "is_climate_shock", "is_economic_shock",
     ]].rename(columns={
         "province_final": "province",
         "city_municipality_final": "city_municipality",
@@ -349,8 +355,9 @@ def build() -> None:
         print(f"after dropping needs_review softies: {len(out)} rows (-{len(review)})")
 
     n_clim = int(out["is_climate_shock"].fillna(False).sum()) if "is_climate_shock" in out.columns else 0
-    out = out.drop(columns=["is_climate_shock"], errors="ignore")
-    dropped = dropped.drop(columns=["is_climate_shock"], errors="ignore")
+    n_econ = int(out["is_economic_shock"].fillna(False).sum()) if "is_economic_shock" in out.columns else 0
+    out = out.drop(columns=["is_climate_shock", "is_economic_shock"], errors="ignore")
+    dropped = dropped.drop(columns=["is_climate_shock", "is_economic_shock"], errors="ignore")
     out = out.sort_values(["province", "city_municipality", "publication_date"], na_position="last")
     OUTDIR.mkdir(parents=True, exist_ok=True)
     out.to_parquet(OUTDIR / "calabarzon_food_insecurity_dataset.parquet", index=False)
@@ -358,7 +365,7 @@ def build() -> None:
     _safe_csv(dropped.sort_values("drop_reason"),
               OUTDIR / "calabarzon_dataset_dropped_audit.csv")
     print(f"final dataset: {len(out)} rows -> calabarzon_food_insecurity_dataset.(parquet|csv)"
-          f" | climate-shock determinant rows: {n_clim}")
+          f" | climate-shock rows: {n_clim} | economic-shock rows: {n_econ}")
     print("province:", out["province"].value_counts(dropna=False).to_dict())
     print("distinct city/municipality:", out["city_municipality"].nunique(),
           "| barangay-level rows:", int(out["barangay"].notna().sum()))
@@ -388,15 +395,16 @@ def _clean(out: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame]:
     # ASF (African Swine Fever) is a food-anchor: it directly hits pork/livestock
     # food supply, but the noun "ASF" alone isn't in the FOOD_ANCHOR lexicon.
     _asf = re.compile(r"\b(asf|african swine fever|swine fever)\b", re.I)
-    # Climate-shock rows are food-security determinants (FAO stability/availability
-    # pillar) without a food-anchor term — a typhoon/flood hitting CALABARZON — so
-    # they are exempt from the food-anchor requirement. They are pre-guarded for
-    # geography (CALABARZON actually hit, not a Metro-Manila/national/foreign wire)
-    # in collect_climate_shock; the geo + other-region + noise gates below still apply.
-    climate = out["is_climate_shock"].fillna(False) if "is_climate_shock" in out.columns \
-        else pd.Series(False, index=out.index)
-    has_food = txt.map(lambda t: bool(FOOD_ANCHOR.search(t)) or bool(_asf.search(t))) | ~has_lead | climate
-    has_topic = txt.map(lambda t: len(_matched_topics(t)) > 0)
+    # Climate-shock (typhoon/flood) and economic-shock (job loss/closure) rows are
+    # food-security determinants (FAO stability & access pillars) without a food-anchor
+    # term, so they are exempt from the food-anchor requirement. Both are pre-guarded
+    # for geography (CALABARZON actually affected, not a Metro-Manila/national/foreign
+    # wire) in their collect_* sweeps; the geo + other-region + noise gates still apply.
+    def _flag(col):
+        return out[col].fillna(False) if col in out.columns else pd.Series(False, index=out.index)
+    shock = _flag("is_climate_shock") | _flag("is_economic_shock")
+    has_food = txt.map(lambda t: bool(FOOD_ANCHOR.search(t)) or bool(_asf.search(t))) | ~has_lead | shock
+    has_topic = txt.map(lambda t: len(_matched_topics(t)) > 0) | shock
     has_geo = out["province"].notna()
     has_lgu = out["city_municipality"].notna()
     # CALABARZON-only: drop any article that names another region at all — even

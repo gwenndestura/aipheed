@@ -24,7 +24,7 @@ Batangas,San Jose,041022000,covered_relevant
 Batangas,San Juan,041023000,covered_relevant
 Batangas,San Luis,041024000,covered_relevant
 Batangas,San Nicolas,041025000,covered_relevant
-Batangas,San Pascual,041026000,mentioned_only
+Batangas,San Pascual,041026000,covered_relevant
 Batangas,Santa Teresita,041027000,mentioned_only
 Batangas,Sto. Tomas,041028000,covered_relevant
 Batangas,Taal,041029000,covered_relevant
@@ -74,7 +74,7 @@ Laguna,Magdalena,043415000,mentioned_only
 Laguna,Majayjay,043416000,covered_relevant
 Laguna,Nagcarlan,043417000,covered_relevant
 Laguna,Paete,043418000,mentioned_only
-Laguna,Pagsanjan,043419000,mentioned_only
+Laguna,Pagsanjan,043419000,covered_relevant
 Laguna,Pakil,043420000,mentioned_only
 Laguna,Pangil,043421000,covered_relevant
 Laguna,Pila,043422000,mentioned_only
@@ -83,7 +83,7 @@ Laguna,San Pablo,043424000,covered_relevant
 Laguna,San Pedro,043425000,covered_relevant
 Laguna,Santa Cruz,043426000,mentioned_only
 Laguna,Santa Maria,043427000,mentioned_only
-Laguna,Santa Rosa,043428000,mentioned_only
+Laguna,Santa Rosa,043428000,covered_relevant
 Laguna,Siniloan,043429000,mentioned_only
 Laguna,Victoria,043430000,covered_relevant
 Quezon,Agdangan,045601000,mentioned_only
@@ -92,7 +92,7 @@ Quezon,Atimonan,045603000,mentioned_only
 Quezon,Buenavista,045605000,mentioned_only
 Quezon,Burdeos,045606000,covered_relevant
 Quezon,Calauag,045607000,mentioned_only
-Quezon,Candelaria,045608000,mentioned_only
+Quezon,Candelaria,045608000,covered_relevant
 Quezon,Catanauan,045610000,covered_relevant
 Quezon,Dolores,045615000,mentioned_only
 Quezon,General Luna,045616000,mentioned_only
@@ -100,7 +100,7 @@ Quezon,General Nakar,045617000,covered_relevant
 Quezon,Guinayangan,045618000,covered_relevant
 Quezon,Gumaca,045619000,covered_relevant
 Quezon,Infanta,045620000,covered_relevant
-Quezon,Jomalig,045621000,mentioned_only
+Quezon,Jomalig,045621000,covered_relevant
 Quezon,Lopez,045622000,covered_relevant
 Quezon,Lucban,045623000,covered_relevant
 Quezon,Lucena,045624000,covered_relevant
@@ -110,7 +110,7 @@ Quezon,Mulanay,045628000,mentioned_only
 Quezon,Padre Burgos,045629000,mentioned_only
 Quezon,Pagbilao,045630000,covered_relevant
 Quezon,Panukulan,045631000,covered_relevant
-Quezon,Patnanungan,045632000,mentioned_only
+Quezon,Patnanungan,045632000,covered_relevant
 Quezon,Perez,045633000,mentioned_only
 Quezon,Pitogo,045634000,mentioned_only
 Quezon,Plaridel,045635000,mentioned_only
