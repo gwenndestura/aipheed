@@ -45,7 +45,7 @@ def main() -> None:
         "--profile", choices=["low", "full", "lgu"], default="low",
         help="low: ~228 topical queries, quarterly windows (already run). "
              "lgu: the per-LGU + site-targeted queries the low profile "
-             "skipped (147 LGUs), quarterly windows, same gentle rate; "
+             "skipped (142 LGUs), quarterly windows, same gentle rate; "
              "writes gnews_lgu_<year>.parquet so it never clobbers the low set. "
              "full: every query, monthly windows.",
     )
@@ -73,7 +73,7 @@ def main() -> None:
         window_months = 3
     elif args.profile == "lgu":
         # Exactly the queries the low profile skipped — no overlap, so this
-        # is net-new coverage (all 147 CALABARZON LGUs + credible domains).
+        # is net-new coverage (all 142 CALABARZON LGUs + credible domains).
         queries = list(dict.fromkeys(_LGU_QUERIES + _DOMAIN_TARGETED))
         window_months = 3
         prefix = "gnews_lgu"

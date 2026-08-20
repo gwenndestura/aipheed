@@ -692,7 +692,7 @@ _DOMAIN_TARGETED: list[str] = (
 )
 
 # ---------------------------------------------------------------------------
-# Per-LGU queries — all 147 CALABARZON municipalities and cities.
+# Per-LGU queries — all 142 CALABARZON municipalities and cities.
 # Reuses CALABARZON_LGUS from gdelt_fetcher so both sources share one roster,
 # guaranteeing no LGU is silently uncovered (mirrors the GDELT strategy).
 # Three variants per LGU: market/prices (EN), relief/hunger (EN), Filipino.
@@ -730,7 +730,7 @@ GNEWS_RSS_QUERIES: list[str] = (
     + _CALABARZON_CITIES
     + _HUNGERGIST_SOCIAL
     + _DOMAIN_TARGETED        # site:-specific queries for all 26 credible domains
-    + _LGU_QUERIES            # 3 query variants × all 147 CALABARZON LGUs
+    + _LGU_QUERIES            # 3 query variants × all 142 CALABARZON LGUs
 )
 
 

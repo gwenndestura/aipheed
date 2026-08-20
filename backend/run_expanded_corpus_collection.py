@@ -18,7 +18,7 @@ Anthropic Classifier
 
 Coverage guarantee
 ------------------
-  Queries target ALL 147 CALABARZON LGUs (municipalities + cities) individually
+  Queries target ALL 142 CALABARZON LGUs (municipalities + cities) individually
   across all 5 provinces — ensuring no municipality is silently uncovered.
 
 Usage
@@ -419,9 +419,9 @@ def main() -> None:
     parser.add_argument(
         "--sources", nargs="+",
         choices=["gnews_rss", "rss", "gdelt", "gdelt_bq", "gdelt_bq_national",
-                 "gdelt_bq_gov", "gdelt_bq_recovered", "commoncrawl"],
+                 "gdelt_bq_gov", "gdelt_bq_recovered", "commoncrawl", "eventregistry"],
         default=["gnews_rss", "rss", "gdelt", "gdelt_bq", "gdelt_bq_national",
-                 "gdelt_bq_gov", "gdelt_bq_recovered", "commoncrawl"],
+                 "gdelt_bq_gov", "gdelt_bq_recovered", "commoncrawl", "eventregistry"],
         help="Which fetchers to run (default: all)",
     )
     parser.add_argument("--no-classify", action="store_true",
@@ -531,6 +531,16 @@ def main() -> None:
                 all_new += rec
             else:
                 logger.info("gdelt_bq_recovered: no recovery file yet — skipping.")
+
+        # ── 0a4. Event Registry (NewsAPI.ai) — recall-gap capture ─────────
+        if "eventregistry" in args.sources:
+            er_path = Path("data/raw/eventregistry_raw.parquet")
+            if er_path.exists():
+                er = pd.read_parquet(er_path).to_dict(orient="records")
+                logger.info("[0a4] Event Registry: %d articles", len(er))
+                all_new += er
+            else:
+                logger.info("eventregistry: no fetch file yet — skipping.")
 
         # ── 0b. Common Crawl (pre-harvested, pre-enriched) ────────────────
         if "commoncrawl" in args.sources:
@@ -691,6 +701,30 @@ def main() -> None:
     ).apply(geocode_to_province)
     # Prefer the authoritative GDELT tag; fall back to text geocode.
     combined["province_code"] = prior_pc.where(prior_pc.notna(), text_pc)
+
+    # ── Sub-province geography (city / municipality / barangay) ────────────
+    # Refine every province-tagged row to the most specific CALABARZON place
+    # its text names, using the full Region IV-A PSGC gazetteer. Adds
+    # lgu_name / lgu_psgc / barangay_name / barangay_psgc / match_level /
+    # geo_specificity / geo_conflict so the corpus is geographically specific
+    # rather than province-only. The province_code just set above is passed as
+    # the trusted prior and is never overwritten.
+    logger.info("Refining to city / municipality / barangay via PSGC gazetteer...")
+    try:
+        from app.ml.corpus.location_geocoder import geocode_location_batch
+        combined = geocode_location_batch(combined)
+        _lvl = combined["match_level"].value_counts().to_dict()
+        logger.info(
+            "Sub-province tags — lgu:%d barangay:%d (province:%d region:%d none:%d)",
+            _lvl.get("lgu", 0), _lvl.get("barangay", 0), _lvl.get("province", 0),
+            _lvl.get("region", 0), _lvl.get("none", 0),
+        )
+    except FileNotFoundError:
+        logger.warning(
+            "PSGC gazetteer missing — run `python -m "
+            "app.ml.corpus.psgc_gazetteer_fetcher` to enable sub-province tags. "
+            "Continuing with province-level geography only."
+        )
 
     logger.info(
         "Combined corpus: %d articles (%d existing + %d new)",

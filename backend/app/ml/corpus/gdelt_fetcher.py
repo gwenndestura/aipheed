@@ -28,7 +28,7 @@ Set environment variable:
 
 COVERAGE STRATEGY
 -----------------
-We query ALL 147 CALABARZON LGUs (municipalities + cities) individually
+We query ALL 142 CALABARZON LGUs (municipalities + cities) individually
 with focused food insecurity sub-queries, then also run province-level
 and regional queries. Each query is limited by a 3-month date window so
 250-article caps are less likely to truncate relevant articles.
@@ -90,7 +90,7 @@ _USE_BIGQUERY = os.environ.get("GDELT_USE_BIGQUERY", "true").lower() == "true"
 _BIGQUERY_CREDENTIALS = os.environ.get("GOOGLE_APPLICATION_CREDENTIALS", None)
 
 # ---------------------------------------------------------------------------
-# ALL 147 CALABARZON LGUs
+# ALL 142 CALABARZON LGUs
 # ---------------------------------------------------------------------------
 
 CALABARZON_LGUS: dict[str, list[str]] = {
@@ -102,7 +102,8 @@ CALABARZON_LGUS: dict[str, list[str]] = {
         "Malvar", "Mataas na Kahoy", "Nasugbu", "Padre Garcia",
         "Rosario Batangas", "San Jose Batangas", "San Juan Batangas",
         "San Luis Batangas", "San Nicolas Batangas", "San Pascual Batangas",
-        "Santa Teresita Batangas", "Taysan", "Tingloy", "Tuy Batangas",
+        "Santa Teresita Batangas", "Taal Batangas", "Talisay Batangas",
+        "Taysan", "Tingloy", "Tuy Batangas",
     ],
     "Cavite": [
         "Bacoor", "Cavite City", "Dasmariñas", "General Trias Cavite", "Imus Cavite",
@@ -128,8 +129,9 @@ CALABARZON_LGUS: dict[str, list[str]] = {
         "Agdangan", "Alabat", "Atimonan", "Buenavista Quezon", "Burdeos",
         "Calauag", "Catanauan", "Dolores Quezon", "General Luna Quezon",
         "General Nakar", "Guinayangan", "Gumaca", "Infanta Quezon",
-        "Jomalig", "Lopez Quezon", "Lucban", "Macalelon", "Mulanay",
-        "Padre Burgos Quezon", "Panukulan", "Patnanungan", "Perez Quezon",
+        "Jomalig", "Lopez Quezon", "Lucban", "Macalelon", "Mauban",
+        "Mulanay", "Municipality of Quezon", "Padre Burgos Quezon",
+        "Pagbilao", "Panukulan", "Patnanungan", "Perez Quezon",
         "Pitogo Quezon", "Plaridel Quezon", "Polillo", "Real Quezon",
         "Sampaloc Quezon", "San Andres Quezon", "San Antonio Quezon",
         "San Francisco Quezon", "San Narciso Quezon", "Sariaya",
@@ -147,12 +149,12 @@ CALABARZON_LGUS: dict[str, list[str]] = {
 # Food insecurity query — one combined Boolean OR query per LGU / province.
 #
 # Previously this was 14 separate sub-queries per LGU, producing:
-#   (137 LGUs + 5 provinces + 30 regional) × 14 × 25 windows ≈ 60,000 requests
-#   At 1.5 s / request ≈ 25 hours.
+#   (142 LGUs + 5 provinces + 30 regional) × 14 × 25 windows ≈ 62,000 requests
+#   At 1.5 s / request ≈ 26 hours.
 #
 # GDELT supports Boolean OR in the query string, so all 14 food themes collapse
 # into a single request per LGU per window:
-#   (137 + 5 + 30) × 25 windows = 4,300 requests ≈ 1.8 hours  (14× faster)
+#   (142 + 5 + 30) × 25 windows = 4,425 requests ≈ 1.8 hours  (14× faster)
 #
 # The terms below cover every theme the 14 original sub-queries targeted.
 # ---------------------------------------------------------------------------
