@@ -78,7 +78,9 @@ _NEGATIVE = re.compile(
     r"london|dubai|singapore|hong kong|canada|australia|"                    # foreign
     r"recipe|dishes you can cook|101: getting to know|must-try|restaurants|"
     r"comfort food|good food in a relationship|"                            # food-culture
-    r"hunger[- ]strike|hunger strikers)\b",                                  # protest, not food insecurity
+    r"hunger[- ]strike|hunger strikers|"                                     # protest, not food insecurity
+    r"danfulani|naic boss|naic md|nirsal|tinubu|naira|"                      # Nigerian NAIC vs Naic, Cavite
+    r"guide service|fishing report|fishing tournament|san luis obispo)\b",   # US fishing vs CALABARZON LGU
     re.I)
 
 
