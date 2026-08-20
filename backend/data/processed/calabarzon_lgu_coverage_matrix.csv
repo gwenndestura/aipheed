@@ -79,7 +79,7 @@ Laguna,Pakil,043420000,mentioned_only
 Laguna,Pangil,043421000,covered_relevant
 Laguna,Pila,043422000,mentioned_only
 Laguna,Rizal,043423000,absent
-Laguna,San Pablo,043424000,mentioned_only
+Laguna,San Pablo,043424000,covered_relevant
 Laguna,San Pedro,043425000,covered_relevant
 Laguna,Santa Cruz,043426000,mentioned_only
 Laguna,Santa Maria,043427000,mentioned_only
@@ -127,15 +127,15 @@ Quezon,Tagkawayan,045646000,covered_relevant
 Quezon,Tayabas,045647000,covered_relevant
 Quezon,Tiaong,045648000,mentioned_only
 Quezon,Unisan,045649000,mentioned_only
-Rizal,Angono,045801000,mentioned_only
+Rizal,Angono,045801000,covered_relevant
 Rizal,Antipolo,045802000,covered_relevant
-Rizal,Baras,045803000,mentioned_only
+Rizal,Baras,045803000,covered_relevant
 Rizal,Binangonan,045804000,covered_relevant
 Rizal,Cainta,045805000,covered_relevant
 Rizal,Cardona,045806000,covered_relevant
 Rizal,Jala-Jala,045807000,absent
 Rizal,Morong,045809000,mentioned_only
-Rizal,Pililla,045810000,mentioned_only
+Rizal,Pililla,045810000,covered_relevant
 Rizal,Rodriguez,045808000,covered_relevant
 Rizal,San Mateo,045811000,mentioned_only
 Rizal,Tanay,045812000,covered_relevant

@@ -1,8 +1,8 @@
 # CALABARZON Food-Insecurity News Dataset
 
-**Rows:** 479 articles · **Provinces:** {'Batangas': 155, 'Laguna': 102, 'Cavite': 93, 'Quezon': 83, 'Rizal': 46}
-**Distinct cities/municipalities:** 63 of 142 · **barangay-level rows:** 10
-**By source:** {'corpus_recall': 413, 'strict_reanalysis': 66}
+**Rows:** 664 articles · **Provinces:** {'Batangas': 215, 'Laguna': 147, 'Cavite': 146, 'Quezon': 92, 'Rizal': 64}
+**Distinct cities/municipalities:** 67 of 142 · **barangay-level rows:** 10
+**By source:** {'corpus_recall': 598, 'strict_reanalysis': 66}
 
 ## What this is
 News articles that provide usable evidence about food insecurity (or its clear
@@ -52,13 +52,13 @@ data_source, article_id.  (* populated for strict_reanalysis rows; sparse for
 corpus_recall rows.)
 
 `needs_review` = True for the softest rows (only indirect poverty/livelihood/supply
-signals) — 0 of 479 rows, for an optional eyeball.
+signals) — 0 of 664 rows, for an optional eyeball.
 
 ## Known limitations (scope notes)
 - **Residual precision (~99%):** the gates are lexical, so ~1 row may survive on an
   incidental token (e.g. a "Cordillera vegetable prices" story pre-tagged to a
   CALABARZON province). Retained for reproducibility; the audit CSV lists all drops.
-- **Coverage ceiling:** 63/142 LGUs have a qualifying article. Targeted collection
+- **Coverage ceiling:** 67/142 LGUs have a qualifying article. Targeted collection
   via two independent global news indexes (GDELT, Event Registry) confirmed most
   remaining municipalities have no food-insecurity news — a data-availability limit.
   See `calabarzon_lgu_coverage_matrix.csv` (covered / mentioned-only / absent).
