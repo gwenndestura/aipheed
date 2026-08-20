@@ -84,6 +84,96 @@ _NEGATIVE = re.compile(
     re.I)
 
 
+# Foreign-source detection. "Laguna" is Spanish for lagoon and a Mexican region,
+# so Spanish/Portuguese/Italian/Indonesian articles mis-geocode onto Laguna
+# province. Drop them permanently: by foreign TLD/outlet, or (for non-PH domains
+# such as the news.google.com aggregator) by foreign-language signal. PH outlets
+# are trusted regardless of an "El Nino"/"n~" token so genuine PH stories survive.
+_PH_OUTLETS = re.compile(
+    r"\.ph\b|\.ph$|philstar|inquirer|rappler|gmanetwork|manilatimes|manilabulletin|"
+    r"mb\.com|abs-cbn|sunstar|bworldonline|businessmirror|journal\.com|tribune\.net|"
+    r"manilastandard|remate|bandera|tempo\.com\.ph|pna\.gov|pia\.gov|panaynews|"
+    r"mindanews|cebudaily|philippine|ateneo|dailyguardian|manila", re.I)
+_FOREIGN_DOM = re.compile(
+    r"\.(mx|es|cl|it|ve|do|ar|pe|uy|br|fr|de|id|co|uk)(/|$|\b)|"
+    r"milenio|infobae|clarin|laverdad|larazon\.es|eldiario|ecoticias|radioagricultura|"
+    r"diariolibre|veneziatoday|informacion\.es|elespanol|ultimasnoticias|cnnindonesia|"
+    r"semana\.com|eluniversal|noroeste|vanguardia|elsiglo|periodicodaily|midiamax|"
+    r"harianterbit|rmol|tribunnews|mediaindonesia|expansion\.mx|lanzadigital|latribuna|"
+    r"andaluciainformacion|laopinion|aimdigital|unosantafe|heraldodemexico|cugetliber|"
+    r"el19digital|nativenews|lanacion|elpais|elmundo|abc\.es|20minutos|okdiario|"
+    r"cibercuba|novedadesdetabasco|laprovincia\.es|mediosobson|mirror\.co|periodistadigital|"
+    r"colimanoticias|livescience|ellitoral|timesofindia|theyucatantimes|lacronicabadajoz|"
+    r"radiorebelde|gizmodo|aktual24|kaq580|libertaddigital|elperiodico|mexiconewsdaily|"
+    r"excelsiorcalifornia|levante-emv|caraotadigital|kompas|beritasatu|sindonews|bisnis\.com",
+    re.I)
+_FLANG_ACCENT = re.compile(r"[¿¡áéíóúàèìòùâêôãõçü]")
+_FLANG_WORDS = re.compile(
+    r"\b(seg[uú]n|est[aá]|m[aá]s|a[ñn]o|r[ií]o nazas|ciudad de|gobierno|millones|"
+    r"sequ[ií]a|cosecha|mar menor|murcia|jalisco|comarca|acu[ií]fero|prefeitura|banjir|"
+    r"warga|pemerintah|dengan|untuk|yang|camalotes|crecida|riada|avenidas|ayuntamiento|"
+    r"diputaci[oó]n|consejer[ií]a|regenerativa)\b", re.I)
+
+
+def _is_foreign(domain: str, text: str) -> bool:
+    dom = str(domain or "")
+    if _FOREIGN_DOM.search(dom):
+        return True
+    if _PH_OUTLETS.search(dom):
+        return False
+    return bool(_FLANG_ACCENT.search(text) or _FLANG_WORDS.search(text))
+
+
+# Off-topic subjects that carry a food/disaster token but are not food-insecurity
+# stories (verified by manual review of the collected set). Matched on the TITLE
+# only — the article's subject lives in the headline, so a stray word in the lead
+# (e.g. a "dengue" related-link under a typhoon story) never triggers a drop.
+_OFFTOPIC = re.compile(
+    r"\b(measles|pertussis|dengue|polio|rabies|tigdas|disease outbreak)\b"          # disease-calamity, not climate
+    r"|\b(shooting|shot dead|shot to death|murder|homicide|stabb|love triangle|"
+    r"slay|slain|shabu|drug (bust|haul|raid|war|den)|robbery|carnap|\brape\b|"
+    r"ambush|nabbed|dynamite fishing|blast fishing)\b"                              # crime / illegal-fishing arrests
+    r"|\b(traffic jam|delivery rider|utility post|road crash|road mishap)\b"        # accidents
+    r"|\b(miss universe|miss world|beauty pageant|\bpageant\b|teleserye|box office|"
+    r"showbiz|horse race|\bPBA\b|\bUAAP\b|\bNBA\b|Gilas|palaro)\b"                   # showbiz / sport (NOT bare 'basketball' — evac 'basketball court')
+    r"|\b(space week|satellite internet|digital skills|drone data|analog mission|broadband)\b"  # tech
+    r"|\b(hagisan ng suman|food treasure|food trip|mascot|foodie)\b"                # food-culture festival
+    r"|\bgdp growth\b|\b(illegal horse|\bPETA\b)\b"                                 # macro / animal-rights
+    r"|\b(cocaine|marijuana|marihuana|poach\w*|wildlife|threatened birds|"
+    r"illegal possession|held for illegal|\barrested\b|apprehended)\b"              # crime (drug/wildlife/arrest) - NOT rice smuggling (food supply)
+    r"|\b(wrestling|\bwwe\b|\baew\b|killer kross|matt cardona)\b"                   # pro-wrestling ('HOG' event collides with livestock)
+    r"|\b(propeller|crash-land|plane crash|aircraft|garage fire)\b"                 # accidents
+    r"|\b(canary island|tenerife|mallorca|ibiza|puerto rico)\b"                     # foreign places
+    r"|los banos enterprise|\bfriant\b"                                             # Los Banos, CALIFORNIA (vs Los Banos, Laguna)
+    r"|\bvax schedules?\b|\bvaccination schedules?\b|\b(agri.?tourism|agriculture tourism|tourism park)\b"  # health-logistics / agri-tourism
+    r"|\benjoying nature\b|\bresort\b"                                              # leisure / resort (not food insecurity)
+    r"|\bforest (refuge|fraud)\b|when forests become", re.I)                        # environmental-corruption editorials
+# Another-region place named in the title with NO CALABARZON province co-mentioned
+# (a mis-geocode, e.g. "Rice prices rising in Bataan market" tagged to Quezon).
+# Kept when a CALABARZON province also appears ("Bataan oil spill reaching Cavite").
+_OTHERREG_TITLE = re.compile(
+    r"\b(capas|tarlac|pampanga|bulacan|zambales|bataan|nueva ecija|pangasinan|benguet|"
+    r"ilocos|isabela|cagayan|bicol|cebu|davao|iloilo|bacolod|zamboanga|abra)\b", re.I)
+_CALZN_TITLE = re.compile(r"\b(cavite|laguna|batangas|rizal|quezon|calabarzon)\b", re.I)
+# Reclamation / dredging / land-conversion: off-topic governance UNLESS the story
+# is about fisherfolk catch or farmland (a real food-source / livelihood loss).
+_RECLAM = re.compile(r"\b(reclamation|dredging|land conversion|spillway|seabed quarr)\b", re.I)
+_FISHFARM = re.compile(
+    r"\b(fish|catch|harvest|tahong|mussel|livelihood|farm|palay|rice|crop|magsasaka|"
+    r"mangingisda|pamalakaya|coconut|vegetable|poultry|hog|swine|tilapia|bangus)", re.I)
+# Metro-Manila places that only ever appear here as barangay-name mis-geocodes.
+_METRO_MISGEO = re.compile(r"\b(taguig|quezon city)\b", re.I)
+
+
+def _is_offtopic(title: str) -> bool:
+    t = str(title or "")
+    if _OFFTOPIC.search(t) or _METRO_MISGEO.search(t):
+        return True
+    if _OTHERREG_TITLE.search(t) and not _CALZN_TITLE.search(t):
+        return True
+    return bool(_RECLAM.search(t)) and not bool(_FISHFARM.search(t))
+
+
 def _matched_topics(text: str) -> list[str]:
     return [name for name, pat in TOPIC_PATTERNS.items() if pat.search(text)]
 
@@ -319,16 +409,27 @@ def _clean(out: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame]:
     #  - foreign locations (COMCAST "Bay Area", California, abroad)
     #  - food-culture / lifestyle (recipes, "101: getting to know", restaurants)
     neg = txt.map(lambda t: bool(_NEGATIVE.search(t)))
+    # Foreign source ("Laguna" = Spanish lagoon / Mexican region mis-geocodes).
+    foreign = [_is_foreign(d, t) for d, t in zip(out["news_source"], txt)]
+    foreign = pd.Series(foreign, index=out.index)
+    # Off-topic subject (disease/crime/accident/showbiz/sport/tech/culture/governance
+    # carrying a food or disaster token) — matched on the title only.
+    offtopic = out["title"].map(_is_offtopic)
 
-    keep_mask = has_food & has_topic & has_geo & ~other_subject & ~neg
+    keep_mask = has_food & has_topic & has_geo & ~other_subject & ~neg & ~foreign & ~offtopic
     kept = out[keep_mask].copy()
     dropped = out[~keep_mask].copy()
     reasons = []
-    for f, tp, g, o, n in zip(has_food[~keep_mask], has_topic[~keep_mask],
-                              has_geo[~keep_mask], other_subject[~keep_mask], neg[~keep_mask]):
+    for f, tp, g, o, n, fr, ot in zip(has_food[~keep_mask], has_topic[~keep_mask],
+                                      has_geo[~keep_mask], other_subject[~keep_mask],
+                                      neg[~keep_mask], foreign[~keep_mask], offtopic[~keep_mask]):
         r = []
         if not g:
             r.append("no_calabarzon_province")
+        if fr:
+            r.append("foreign_source")
+        if ot:
+            r.append("off_topic_subject")
         if o:
             r.append("other_region_subject")
         if n:

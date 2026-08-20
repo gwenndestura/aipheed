@@ -7,7 +7,7 @@ Batangas,Batangas City,041005000,covered_relevant
 Batangas,Bauan,041006000,covered_relevant
 Batangas,Calaca,041007000,covered_relevant
 Batangas,Calatagan,041008000,covered_relevant
-Batangas,Cuenca,041009000,covered_relevant
+Batangas,Cuenca,041009000,mentioned_only
 Batangas,Ibaan,041010000,covered_relevant
 Batangas,Laurel,041011000,covered_relevant
 Batangas,Lemery,041012000,covered_relevant
@@ -38,7 +38,7 @@ Cavite,Amadeo,042102000,covered_relevant
 Cavite,Bacoor,042103000,covered_relevant
 Cavite,Carmona,042104000,covered_relevant
 Cavite,Cavite City,042105000,covered_relevant
-Cavite,Dasmariñas,042106000,covered_relevant
+Cavite,Dasmariñas,042106000,mentioned_only
 Cavite,Gen. Mariano Alvarez,042123000,mentioned_only
 Cavite,General Emilio Aguinaldo,042107000,mentioned_only
 Cavite,General Trias,042108000,covered_relevant
@@ -83,15 +83,15 @@ Laguna,San Pablo,043424000,covered_relevant
 Laguna,San Pedro,043425000,covered_relevant
 Laguna,Santa Cruz,043426000,mentioned_only
 Laguna,Santa Maria,043427000,mentioned_only
-Laguna,Santa Rosa,043428000,covered_relevant
+Laguna,Santa Rosa,043428000,mentioned_only
 Laguna,Siniloan,043429000,mentioned_only
 Laguna,Victoria,043430000,covered_relevant
 Quezon,Agdangan,045601000,mentioned_only
 Quezon,Alabat,045602000,covered_relevant
-Quezon,Atimonan,045603000,covered_relevant
+Quezon,Atimonan,045603000,mentioned_only
 Quezon,Buenavista,045605000,mentioned_only
 Quezon,Burdeos,045606000,covered_relevant
-Quezon,Calauag,045607000,covered_relevant
+Quezon,Calauag,045607000,mentioned_only
 Quezon,Candelaria,045608000,mentioned_only
 Quezon,Catanauan,045610000,covered_relevant
 Quezon,Dolores,045615000,mentioned_only
@@ -100,7 +100,7 @@ Quezon,General Nakar,045617000,covered_relevant
 Quezon,Guinayangan,045618000,covered_relevant
 Quezon,Gumaca,045619000,covered_relevant
 Quezon,Infanta,045620000,covered_relevant
-Quezon,Jomalig,045621000,covered_relevant
+Quezon,Jomalig,045621000,mentioned_only
 Quezon,Lopez,045622000,covered_relevant
 Quezon,Lucban,045623000,covered_relevant
 Quezon,Lucena,045624000,covered_relevant
