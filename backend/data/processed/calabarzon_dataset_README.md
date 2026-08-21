@@ -1,8 +1,8 @@
 # CALABARZON Food-Insecurity News Dataset
 
-**Rows:** 1164 articles · **Provinces:** {'Batangas': 372, 'Cavite': 239, 'Laguna': 219, 'Quezon': 201, 'Rizal': 133}
+**Rows:** 1168 articles · **Provinces:** {'Batangas': 372, 'Cavite': 239, 'Laguna': 219, 'Quezon': 201, 'Rizal': 133, None: 4}
 **Distinct cities/municipalities:** 98 of 142
-**By source:** {'corpus_recall': 1101, 'strict_reanalysis': 63}
+**By source:** {'corpus_recall': 1105, 'strict_reanalysis': 63}
 
 ## What this is
 News articles that provide usable evidence about food insecurity (or its clear
@@ -35,7 +35,7 @@ NLI classifier (10 food-insecurity hypotheses):
   5. **Syndication dedup** — same story under a near-identical title collapsed to one
      copy (strict version kept).
 Every dropped row and its failing gate is logged to
-`calabarzon_dataset_dropped_audit.csv` (removed this run: {'no_food_anchor+no_food_insecurity_topic': 199, 'no_food_anchor': 77, 'other_region_subject+no_food_anchor+no_food_insecurity_topic': 52, 'no_food_insecurity_topic': 38, 'off_topic_energy_foreign_or_culture+no_food_anchor+no_food_insecurity_topic': 28, 'other_region_subject': 25, 'no_hypothesis_match+no_food_insecurity_topic': 22, 'off_topic_energy_foreign_or_culture': 21, 'other_region_subject+no_food_anchor': 16, 'off_topic_energy_foreign_or_culture+no_food_anchor': 9, 'no_calabarzon_province+other_region_subject': 6, 'other_region_subject+off_topic_energy_foreign_or_culture+no_food_anchor+no_food_insecurity_topic': 6, 'needs_review_weak_signal': 6, 'off_topic_subject': 3, 'off_topic_subject+other_region_subject': 3, 'other_region_subject+off_topic_energy_foreign_or_culture': 3, 'off_topic_subject+other_region_subject+no_food_anchor+no_food_insecurity_topic': 2, 'off_topic_energy_foreign_or_culture+no_food_insecurity_topic': 2, 'off_topic_subject+other_region_subject+no_food_anchor': 2, 'off_topic_subject+no_food_anchor': 2, 'other_region_subject+no_food_insecurity_topic': 1, 'no_calabarzon_province+other_region_subject+no_food_anchor': 1, 'no_calabarzon_province+foreign_source': 1, 'other_region_subject+off_topic_energy_foreign_or_culture+no_food_anchor': 1, 'foreign_source': 1}).
+`calabarzon_dataset_dropped_audit.csv` (removed this run: {'no_food_anchor+no_food_insecurity_topic': 199, 'no_food_anchor': 77, 'other_region_subject+no_food_anchor+no_food_insecurity_topic': 52, 'no_food_insecurity_topic': 38, 'other_region_subject': 31, 'off_topic_energy_foreign_or_culture+no_food_anchor+no_food_insecurity_topic': 28, 'off_topic_energy_foreign_or_culture': 24, 'no_hypothesis_match+no_food_insecurity_topic': 22, 'other_region_subject+no_food_anchor': 16, 'off_topic_energy_foreign_or_culture+no_food_anchor': 9, 'no_calabarzon_province+other_region_subject': 6, 'other_region_subject+off_topic_energy_foreign_or_culture+no_food_anchor+no_food_insecurity_topic': 6, 'needs_review_weak_signal': 6, 'off_topic_subject': 3, 'off_topic_subject+other_region_subject': 3, 'other_region_subject+off_topic_energy_foreign_or_culture': 3, 'off_topic_subject+other_region_subject+no_food_anchor+no_food_insecurity_topic': 2, 'off_topic_energy_foreign_or_culture+no_food_insecurity_topic': 2, 'off_topic_subject+other_region_subject+no_food_anchor': 2, 'off_topic_subject+no_food_anchor': 2, 'other_region_subject+no_food_insecurity_topic': 1, 'no_calabarzon_province+other_region_subject+no_food_anchor': 1, 'no_calabarzon_province+foreign_source': 1, 'other_region_subject+off_topic_energy_foreign_or_culture+no_food_anchor': 1, 'foreign_source': 1}).
 
 ## Geography (142-LGU enhancement)
 Re-geocoded with the full **142-LGU PSGC gazetteer** geocoder (province → city/
@@ -52,7 +52,7 @@ data_source, article_id.  (* populated for strict_reanalysis rows; sparse for
 corpus_recall rows.)
 
 `needs_review` = True for the softest rows (only indirect poverty/livelihood/supply
-signals) — 0 of 1164 rows, for an optional eyeball.
+signals) — 0 of 1168 rows, for an optional eyeball.
 
 ## Known limitations (scope notes)
 - **Residual precision (~99%):** the gates are lexical, so ~1 row may survive on an

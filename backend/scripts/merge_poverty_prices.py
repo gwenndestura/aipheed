@@ -300,9 +300,103 @@ def merge_general() -> None:
     print("[general] province:", new["province_name"].value_counts().to_dict())
 
 
+def merge_national() -> None:
+    """NATIONAL-scope drivers that demonstrably reach CALABARZON.
+
+    A national rice-price spike or national inflation surge does affect Cavite and
+    Quezon households — that is the purchasing-power -> food-access chain the
+    thesis models. Such an article is kept when it (a) carries a food-linked
+    driver, and (b) explicitly names CALABARZON or one of its five provinces among
+    the affected areas, so the connection is evidence-based rather than assumed.
+    It is stored at NATIONAL scope with no province/LGU, because it is not about
+    one municipality and pinning it to one would be a mis-attribution.
+    """
+    from build_final_dataset import _is_foreign, _is_offtopic, _matched_hypotheses
+    pool = pd.read_parquet(POOL)
+    c = pd.read_parquet(GEO)
+
+    def nt(s):
+        return re.sub(r"[^a-z0-9 ]", "", str(s).lower()).strip()
+    hid, hln, htt = set(c["article_id"]), set(c["link"].dropna()), set(c["title"].fillna("").map(nt))
+    if FINAL.exists():
+        fin = pd.read_parquet(FINAL)
+        hln |= set(fin["url"].dropna())
+        htt |= set(fin["title"].fillna("").map(nt))
+    pool["_nt"] = pool["title"].fillna("").map(nt)
+    new = pool[~(pool["article_id"].isin(hid) | pool["link"].isin(hln) | pool["_nt"].isin(htt))]
+    new = (new.drop_duplicates("article_id").drop_duplicates("link")
+           .drop_duplicates("_nt").drop(columns=["_nt"]))
+    print(f"[national] new: {len(new)}")
+
+    res = [_relevant(str(a), str(b)) for a, b in zip(new["title"].fillna(""),
+                                                     new["summary"].fillna(""))]
+    new["_hyp"] = [h for _, h in res]
+    new = new[[k for k, _ in res]].copy()
+    print(f"[national] food-linked driver: {len(new)}")
+    if new.empty:
+        return
+
+    txt = (new["title"].fillna("") + " " + new["summary"].fillna("")).astype(str)
+    # The CALABARZON link must be explicit in the article itself.
+    calzn = txt.map(lambda t: bool(re.search(r"\b(calabarzon|region iv-?a)\b", t, re.I))
+                    or bool(re.search(PROV, t, re.I)))
+    ph = txt.map(lambda t: bool(re.search(r"\b(philippine|nationwide|national|"
+                                          r"across the country|\bDA\b|\bDTI\b|\bPSA\b|"
+                                          r"\bNFA\b|Malaca[nñ]ang)\b", t, re.I)))
+    keep = (calzn & ph
+            & ~txt.map(lambda t: bool(FOREIGN.search(t)))
+            & ~txt.map(lambda t: bool(re.search(
+                r"\b(indonesia|vietnam|thailand|india|bangladesh|malaysia|"
+                r"mexic|california|nigeria)\b", t, re.I))))
+    new = new[keep].copy()
+    if len(new):
+        btxt = (new["title"].fillna("") + " " + new["summary"].fillna("")).astype(str)
+        drop = [_is_foreign(d, t) or _is_offtopic(str(ti))
+                for d, t, ti in zip(new["source_domain"], btxt, new["title"])]
+        new = new[~pd.Series(drop, index=new.index)].copy()
+    new["_nt"] = new["title"].fillna("").map(nt)
+    new = new.sort_values("summary", key=lambda s: s.str.len(), ascending=False).drop_duplicates("_nt")
+    new = new.drop(columns=["_nt"])
+    print(f"[national] explicit CALABARZON link + filters: {len(new)}")
+    if new.empty:
+        return
+
+    new["is_relevant"] = True
+    new["province_name"] = None
+    new["lgu_name"] = None
+    new["top_hypothesis"] = new["_hyp"]
+    new["top_topic_name"] = new["_hyp"].map({"T1": "food_price_change",
+                                             "T4": "poverty_hardship"})
+    new["food_insecurity_score"] = 0.5
+    new["fetcher_source"] = "pp_national"
+    new = new.drop(columns=["_hyp"])
+
+    def q(p):
+        try:
+            dt = pd.Timestamp(p)
+            return f"{dt.year}-Q{(dt.month - 1) // 3 + 1}"
+        except Exception:
+            return ""
+    new["quarter"] = new["published"].map(q)
+    cols = list(c.columns)
+    for x in cols:
+        if x not in new.columns:
+            new[x] = None
+    comb = pd.concat([c, new[cols]], ignore_index=True)
+    comb = comb.drop_duplicates("article_id").drop_duplicates("link")
+    comb.to_parquet(GEO, index=False)
+    print(f"[national] corpus: {len(c)} -> {len(comb)} (+{len(comb) - len(c)})")
+
+
 if __name__ == "__main__":
     import argparse
     ap = argparse.ArgumentParser()
     ap.add_argument("--general", action="store_true")
+    ap.add_argument("--national", action="store_true")
     a = ap.parse_args()
-    merge_general() if a.general else merge()
+    if a.general:
+        merge_general()
+    elif a.national:
+        merge_national()
+    else:
+        merge()

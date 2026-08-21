@@ -329,8 +329,12 @@ def _load_union() -> pd.DataFrame:
     strict["_source"] = "strict_reanalysis"
 
     corpus = pd.read_parquet(GEO)
+    # National-scope drivers deliberately carry no province (see is_national), so
+    # they are admitted alongside the province-tagged rows.
+    _fs = corpus.get("fetcher_source")
+    _nat = (_fs == "pp_national") if _fs is not None else pd.Series(False, index=corpus.index)
     corpus = corpus[(corpus["is_relevant"] == True) &  # noqa: E712
-                    (corpus["province_name"].notna()) &
+                    (corpus["province_name"].notna() | _nat) &
                     (~corpus["article_id"].isin(set(strict["article_id"])))].copy()
     cat = corpus["top_hypothesis"].map(lambda h: CATEGORY.get(h, ("", "General food-insecurity relevance")))
     corpus["province"] = corpus["province_name"]
@@ -349,6 +353,11 @@ def _load_union() -> pd.DataFrame:
     corpus["is_climate_shock"] = (fs == "climate_shock") if fs is not None else False
     corpus["is_economic_shock"] = (fs == "economic_shock") if fs is not None else False
     corpus["is_poverty_shock"] = (fs == "poverty_shock") if fs is not None else False
+    # National-scope drivers (national food prices / inflation / poverty) that
+    # explicitly reach CALABARZON. They are real determinants of CALABARZON
+    # household food access, but they are NOT about one province, so they are
+    # carried at national scope rather than pinned to an LGU.
+    corpus["is_national"] = (fs == "pp_national") if fs is not None else False
     for col in ("affected_commodity", "affected_population",
                 "relevance_reason", "is_direct_food_insecurity"):
         corpus[col] = None
@@ -359,11 +368,11 @@ def _load_union() -> pd.DataFrame:
             "affected_commodity", "affected_population",
             "is_direct_food_insecurity", "food_insecurity_relevance", "core_score",
             "relevance_reason", "is_climate_shock", "is_economic_shock",
-            "is_poverty_shock", "_source"]
+            "is_poverty_shock", "is_national", "_source"]
     both = pd.concat([strict[[c for c in keep if c in strict.columns]],
                       corpus[[c for c in keep if c in corpus.columns]]],
                      ignore_index=True)
-    for col in ("is_climate_shock", "is_economic_shock", "is_poverty_shock"):
+    for col in ("is_climate_shock", "is_economic_shock", "is_poverty_shock", "is_national"):
         both[col] = both[col].fillna(False) if col in both.columns else False
     print(f"union: {len(strict)} strict + {len(corpus)} corpus-recall = {len(both)} "
           f"({int(both['is_climate_shock'].sum())} climate-shock, "
@@ -416,6 +425,22 @@ def build() -> None:
     # economic-access pillar) and are an explicit, geo-guarded determinant class —
     # never soft review-only, even though poverty_food_access is a _WEAK topic.
     df.loc[df["is_poverty_shock"].fillna(False), "needs_review"] = False
+    # Geographic scope of the story. A national driver (national food prices,
+    # inflation, poverty statistics) genuinely affects CALABARZON households, but
+    # it is not ABOUT one province — recording it at national scope keeps it in the
+    # dataset without mis-attributing it to an LGU.
+    _REGIONAL = re.compile(r"\b(calabarzon|region iv-?a|southern tagalog)\b", re.I)
+    _isnat = df["is_national"].fillna(False)
+    df["geographic_scope"] = [
+        "national" if nat
+        else "city_municipality" if isinstance(lgu, str) and lgu
+        else "region" if (_REGIONAL.search(t) and not isinstance(prov, str))
+        else "province" if isinstance(prov, str) and prov
+        else "region"
+        for nat, lgu, prov, t in zip(_isnat, df["city_municipality_final"],
+                                     df["province_final"], df["_text"])]
+    # National rows carry no province/LGU attribution.
+    df.loc[_isnat, ["province_final", "city_municipality_final"]] = None
     df["relevance_summary"] = df.apply(_summary_row, axis=1)
     df["author"] = None
     df["data_source"] = df["_source"]
@@ -436,7 +461,7 @@ def build() -> None:
         "affected_commodity", "affected_population", "is_direct_food_insecurity",
         "relevance_summary", "relevance_reason", "relevance_score", "match_level",
         "needs_review", "data_source", "article_id", "is_climate_shock", "is_economic_shock",
-        "is_poverty_shock",
+        "is_poverty_shock", "is_national", "geographic_scope",
     ]].rename(columns={
         "province_final": "province",
         "city_municipality_final": "city_municipality",
@@ -474,7 +499,7 @@ def build() -> None:
     n_clim = int(out["is_climate_shock"].fillna(False).sum()) if "is_climate_shock" in out.columns else 0
     n_econ = int(out["is_economic_shock"].fillna(False).sum()) if "is_economic_shock" in out.columns else 0
     n_pov = int(out["is_poverty_shock"].fillna(False).sum()) if "is_poverty_shock" in out.columns else 0
-    _sc = ["is_climate_shock", "is_economic_shock", "is_poverty_shock"]
+    _sc = ["is_climate_shock", "is_economic_shock", "is_poverty_shock", "is_national"]
     out = out.drop(columns=_sc, errors="ignore")
     dropped = dropped.drop(columns=_sc, errors="ignore")
     out = out.sort_values(["province", "city_municipality", "publication_date"], na_position="last")
@@ -525,7 +550,11 @@ def _clean(out: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame]:
     shock = _flag("is_climate_shock") | _flag("is_economic_shock") | _flag("is_poverty_shock")
     has_food = txt.map(lambda t: bool(FOOD_ANCHOR.search(t)) or bool(_asf.search(t))) | ~has_lead | shock
     has_topic = txt.map(lambda t: len(_matched_topics(t)) > 0) | shock
-    has_geo = out["province"].notna()
+    # National-scope drivers have no province by design; their CALABARZON link was
+    # verified at collection time (they name CALABARZON or one of its provinces).
+    is_nat = (out["geographic_scope"] == "national") if "geographic_scope" in out.columns \
+        else pd.Series(False, index=out.index)
+    has_geo = out["province"].notna() | is_nat
     has_lgu = out["city_municipality"].notna()
     # CALABARZON-only: drop any article that names another region at all — even
     # one carrying a CALABARZON LGU token, since those proved to be other-region
