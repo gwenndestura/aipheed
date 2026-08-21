@@ -163,11 +163,19 @@ _FISHFARM = re.compile(
     r"mangingisda|pamalakaya|coconut|vegetable|poultry|hog|swine|tilapia|bangus)", re.I)
 # Metro-Manila places that only ever appear here as barangay-name mis-geocodes.
 _METRO_MISGEO = re.compile(r"\b(taguig|quezon city)\b", re.I)
+# Politician self-promotion PR (Sen. Bong Go's aid-distribution / visit press
+# releases, republished across outlets) — the event may be real but the framing is
+# campaign PR, not food-insecurity reporting. Scoped to this benefactor pattern so
+# genuine coverage that merely mentions other officials is untouched.
+_PR_PROMO = re.compile(
+    r"\bbong go\b|\bchristopher (lawrence )?go\b|\b(senator|sen\.?) go\b"
+    r"|\bgo (provides|gives|boosts|aids|leads|distributes|hands|turns over|visits|pushes|prioritizes)\b",
+    re.I)
 
 
 def _is_offtopic(title: str) -> bool:
     t = str(title or "")
-    if _OFFTOPIC.search(t) or _METRO_MISGEO.search(t):
+    if _OFFTOPIC.search(t) or _METRO_MISGEO.search(t) or _PR_PROMO.search(t):
         return True
     if _OTHERREG_TITLE.search(t) and not _CALZN_TITLE.search(t):
         return True
