@@ -1,8 +1,8 @@
 # CALABARZON Food-Insecurity News Dataset
 
-**Rows:** 1125 articles · **Provinces:** {'Batangas': 353, 'Cavite': 238, 'Laguna': 212, 'Quezon': 196, 'Rizal': 126}
+**Rows:** 1128 articles · **Provinces:** {'Batangas': 355, 'Cavite': 238, 'Laguna': 212, 'Quezon': 197, 'Rizal': 126}
 **Distinct cities/municipalities:** 96 of 142 · **barangay-level rows:** 26
-**By source:** {'corpus_recall': 1063, 'strict_reanalysis': 62}
+**By source:** {'corpus_recall': 1066, 'strict_reanalysis': 62}
 
 ## What this is
 News articles that provide usable evidence about food insecurity (or its clear
@@ -52,7 +52,7 @@ data_source, article_id.  (* populated for strict_reanalysis rows; sparse for
 corpus_recall rows.)
 
 `needs_review` = True for the softest rows (only indirect poverty/livelihood/supply
-signals) — 0 of 1125 rows, for an optional eyeball.
+signals) — 0 of 1128 rows, for an optional eyeball.
 
 ## Known limitations (scope notes)
 - **Residual precision (~99%):** the gates are lexical, so ~1 row may survive on an
