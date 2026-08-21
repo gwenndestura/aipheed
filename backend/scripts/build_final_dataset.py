@@ -43,19 +43,19 @@ GAZ = Path("data/processed/psgc_gazetteer.parquet")
 OUTDIR = Path("data/processed")
 
 TOPIC_PATTERNS: dict[str, re.Pattern] = {
-    "food_security_general": re.compile(r"\b(food secur|food insecur|food sufficien|food access|food availab|food supply|food shortage|food crisis|food scarcity)\w*", re.I),
-    "hunger_food_deprivation": re.compile(r"\b(hunger|gutom|starv|famine|food deprivation|walang makain|nagugutom)\b", re.I),
-    "malnutrition_undernutrition": re.compile(r"\b(malnutri|malnutrisyon|stunt|wasting|undernouri|nutrition|nutrisyon)\b", re.I),
-    "food_prices_affordability": re.compile(r"\b(food prices?|rice prices?|presyo|inflation|afford|mahal|bilihin|expensive|cost of food)\b", re.I),
-    "poverty_food_access": re.compile(r"\b(poverty|kahirapan|poorest|mahirap|indigent)\b", re.I),
-    "rice_staple_supply": re.compile(r"\b(rice|palay|bigas|\bnfa\b|staple|imported rice|rice supply|rice shortage)\b", re.I),
-    "agricultural_production": re.compile(r"\b(crop|harvest|farm|farmer|magsasaka|agri|agricultur|yield|planting|farmland)", re.I),
-    "crop_losses_disaster": re.compile(r"\b(crop damage|agri damage|agricultural damage|agri.?fisher|typhoon|bagyo|flood|baha|drought|tagtuyot|el ni|la ni|calamity|landslide)", re.I),
-    "fisheries_livestock": re.compile(r"\b(fish|isda|bangus|tilapia|milkfish|fishkill|fish kill|red tide|poultry|manok|hog|swine|\basf\b|livestock|bird flu)", re.I),
-    "food_assistance_programs": re.compile(r"\b(ayuda|relief goods|kadiwa|\bdswd\b|4ps|pantawid|feeding program|food pack|community pantry|libreng bigas|rice subsidy)\b", re.I),
-    "livelihood_income": re.compile(r"\b(livelihood|kabuhayan|income|unemploy|jobless|no work|remittance|\bofw\b|wage|job loss|job cut|lost (their )?jobs|laid off|lay ?off|retrench|displaced workers?|\btupad\b|plant (shut ?down|closure|closed)|factory (shut ?down|closure)|mill (shut ?down|closure)|(shut ?down|closure|closed) (its |the )?(plant|factory|mill)|ceased operations|nawalan ng (trabaho|hanapbuhay)|tanggal sa trabaho)\b", re.I),
-    "supply_chain_distribution": re.compile(r"\b(supply|shortage|kakulangan|distribution|transport|logistics|road closure|blockade)\b", re.I),
-    "pests_crop_disease": re.compile(r"\b(pest|infestation|blight|fall armyworm|bird flu|\basf\b|african swine fever|rice black bug|disease outbreak)\b", re.I),
+    "food_security_general": re.compile(r"\b(food secur|food insecur|food sufficien|food access|food availab|food supply|food shortage|food crisis|food scarcity|food production|food self-sufficien)\w*", re.I),
+    "hunger_food_deprivation": re.compile(r"\b(hunger|gutom|starv|famine|food deprivation|walang makain|nagugutom)\w*", re.I),
+    "malnutrition_undernutrition": re.compile(r"\b(malnutri|malnutrisyon|stunt|wasting|undernouri|nutriti|nutrisyon)\w*", re.I),
+    "food_prices_affordability": re.compile(r"\b(food prices?|rice prices?|presyo|inflation|afford|mahal|bilihin|expensive|cost of food)\w*", re.I),
+    "poverty_food_access": re.compile(r"\b(poverty|kahirapan|poorest|mahirap|indigent)\w*", re.I),
+    "rice_staple_supply": re.compile(r"\b(rice|palay|bigas|\bnfa\b|staple|imported rice|rice supply|rice shortage)\w*", re.I),
+    "agricultural_production": re.compile(r"\b(crop|harvest|farm|farmer|magsasaka|agri|agricultur|yield|planting|farmland|vegetable|gulay|produce grower)", re.I),
+    "crop_losses_disaster": re.compile(r"\b(crop damage|agri damage|agricultural damage|agri.?fisher|typhoon|bagyo|flood|baha|drought|tagtuyot|el ni|la ni|calamity|landslide|volcano|volcanic|eruption|ashfall|abo ng bulkan)", re.I),
+    "fisheries_livestock": re.compile(r"\b(fish|isda|bangus|tilapia|milkfish|fishkill|fish kill|red tide|poultry|manok|hog|swine|\basf\b|livestock|bird flu|pork|baboy|chicken|beef|karne|\bmeat\b)", re.I),
+    "food_assistance_programs": re.compile(r"\b(ayuda|relief goods|kadiwa|\bdswd\b|4ps|pantawid|feeding program|food pack|community pantr|libreng bigas|rice subsidy|hot meal|soup kitchen|relief pack|goods distribution)\w*", re.I),
+    "livelihood_income": re.compile(r"\b(livelihood|kabuhayan|income|unemploy|jobless|no work|remittance|\bofw\b|wage|job loss|job cut|lost (their )?jobs|laid off|lay ?off|retrench|displaced workers?|\btupad\b|plant (shut ?down|closure|closed)|factory (shut ?down|closure)|mill (shut ?down|closure)|(shut ?down|closure|closed) (its |the )?(plant|factory|mill)|ceased operations|nawalan ng (trabaho|hanapbuhay)|tanggal sa trabaho)\w*", re.I),
+    "supply_chain_distribution": re.compile(r"\b(supply|shortage|kakulangan|distribution|transport|logistics|road closure|blockade)\w*", re.I),
+    "pests_crop_disease": re.compile(r"\b(pest|infestation|blight|fall armyworm|bird flu|\basf\b|african swine fever|rice black bug|disease outbreak)\w*", re.I),
 }
 
 
@@ -137,7 +137,10 @@ _OFFTOPIC = re.compile(
     r"|\b(miss universe|miss world|beauty pageant|\bpageant\b|teleserye|box office|"
     r"showbiz|horse race|\bPBA\b|\bUAAP\b|\bNBA\b|Gilas|palaro)\b"                   # showbiz / sport (NOT bare 'basketball' — evac 'basketball court')
     r"|\b(space week|satellite internet|digital skills|drone data|analog mission|broadband)\b"  # tech
-    r"|\b(hagisan ng suman|food treasure|food trip|mascot|foodie)\b"                # food-culture festival
+    r"|\b(hagisan ng suman|food treasure|food trip|mascot|foodie|feast in a|"
+    r"delicacies|culinary|cuisine|kakanin|food festival)\b"                        # food-culture / cuisine
+    r"|\b(earnings (down|up)|net income|quarterly (profit|earnings)|share price|"
+    r"stock price|bottom line)\b"                                                  # corporate financial results
     r"|\bgdp growth\b|\b(illegal horse|\bPETA\b)\b"                                 # macro / animal-rights
     r"|\b(cocaine|marijuana|marihuana|poach\w*|wildlife|threatened birds|"
     r"illegal possession|held for illegal|\barrested\b|apprehended)\b"              # crime (drug/wildlife/arrest) - NOT rice smuggling (food supply)
@@ -169,7 +172,8 @@ _METRO_MISGEO = re.compile(r"\b(taguig|quezon city)\b", re.I)
 # genuine coverage that merely mentions other officials is untouched.
 _PR_PROMO = re.compile(
     r"\bbong go\b|\bchristopher (lawrence )?go\b|\b(senator|sen\.?) go\b"
-    r"|\bgo (provides|gives|boosts|aids|leads|distributes|hands|turns over|visits|pushes|prioritizes)\b",
+    r"|\bgo'?s? (provides|provided|gives|gave|boosts|aids|leads|led|distributes|hands|"
+    r"turns over|visits|pushes|prioritizes|outreach)\b",
     re.I)
 
 
@@ -253,6 +257,7 @@ def _load_union() -> pd.DataFrame:
     fs = corpus.get("fetcher_source")
     corpus["is_climate_shock"] = (fs == "climate_shock") if fs is not None else False
     corpus["is_economic_shock"] = (fs == "economic_shock") if fs is not None else False
+    corpus["is_poverty_shock"] = (fs == "poverty_shock") if fs is not None else False
     for col in ("affected_commodity", "affected_population",
                 "relevance_reason", "is_direct_food_insecurity"):
         corpus[col] = None
@@ -262,15 +267,17 @@ def _load_union() -> pd.DataFrame:
             "food_security_dimension_label", "top_hypothesis", "event_type",
             "affected_commodity", "affected_population",
             "is_direct_food_insecurity", "food_insecurity_relevance", "core_score",
-            "relevance_reason", "is_climate_shock", "is_economic_shock", "_source"]
+            "relevance_reason", "is_climate_shock", "is_economic_shock",
+            "is_poverty_shock", "_source"]
     both = pd.concat([strict[[c for c in keep if c in strict.columns]],
                       corpus[[c for c in keep if c in corpus.columns]]],
                      ignore_index=True)
-    for col in ("is_climate_shock", "is_economic_shock"):
+    for col in ("is_climate_shock", "is_economic_shock", "is_poverty_shock"):
         both[col] = both[col].fillna(False) if col in both.columns else False
     print(f"union: {len(strict)} strict + {len(corpus)} corpus-recall = {len(both)} "
           f"({int(both['is_climate_shock'].sum())} climate-shock, "
-          f"{int(both['is_economic_shock'].sum())} economic-shock)")
+          f"{int(both['is_economic_shock'].sum())} economic-shock, "
+          f"{int(both['is_poverty_shock'].sum())} poverty-shock)")
     return both
 
 
@@ -307,6 +314,10 @@ def build() -> None:
     # Economic-shock rows carry a livelihood-only topic set but are an explicit,
     # geo-guarded determinant class (job loss / closure) — never soft review-only.
     df.loc[df["is_economic_shock"].fillna(False), "needs_review"] = False
+    # Poverty-shock rows are poverty/affordability-only by definition (the FAO
+    # economic-access pillar) and are an explicit, geo-guarded determinant class —
+    # never soft review-only, even though poverty_food_access is a _WEAK topic.
+    df.loc[df["is_poverty_shock"].fillna(False), "needs_review"] = False
     df["relevance_summary"] = df.apply(_summary_row, axis=1)
     df["author"] = None
     df["data_source"] = df["_source"]
@@ -327,6 +338,7 @@ def build() -> None:
         "affected_commodity", "affected_population", "is_direct_food_insecurity",
         "relevance_summary", "relevance_reason", "relevance_score", "match_level",
         "needs_review", "data_source", "article_id", "is_climate_shock", "is_economic_shock",
+        "is_poverty_shock",
     ]].rename(columns={
         "province_final": "province",
         "city_municipality_final": "city_municipality",
@@ -364,8 +376,10 @@ def build() -> None:
 
     n_clim = int(out["is_climate_shock"].fillna(False).sum()) if "is_climate_shock" in out.columns else 0
     n_econ = int(out["is_economic_shock"].fillna(False).sum()) if "is_economic_shock" in out.columns else 0
-    out = out.drop(columns=["is_climate_shock", "is_economic_shock"], errors="ignore")
-    dropped = dropped.drop(columns=["is_climate_shock", "is_economic_shock"], errors="ignore")
+    n_pov = int(out["is_poverty_shock"].fillna(False).sum()) if "is_poverty_shock" in out.columns else 0
+    _sc = ["is_climate_shock", "is_economic_shock", "is_poverty_shock"]
+    out = out.drop(columns=_sc, errors="ignore")
+    dropped = dropped.drop(columns=_sc, errors="ignore")
     out = out.sort_values(["province", "city_municipality", "publication_date"], na_position="last")
     OUTDIR.mkdir(parents=True, exist_ok=True)
     out.to_parquet(OUTDIR / "calabarzon_food_insecurity_dataset.parquet", index=False)
@@ -373,7 +387,8 @@ def build() -> None:
     _safe_csv(dropped.sort_values("drop_reason"),
               OUTDIR / "calabarzon_dataset_dropped_audit.csv")
     print(f"final dataset: {len(out)} rows -> calabarzon_food_insecurity_dataset.(parquet|csv)"
-          f" | climate-shock rows: {n_clim} | economic-shock rows: {n_econ}")
+          f" | climate-shock rows: {n_clim} | economic-shock rows: {n_econ}"
+          f" | poverty-shock rows: {n_pov}")
     print("province:", out["province"].value_counts(dropna=False).to_dict())
     print("distinct city/municipality:", out["city_municipality"].nunique(),
           "| barangay-level rows:", int(out["barangay"].notna().sum()))
@@ -410,7 +425,7 @@ def _clean(out: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame]:
     # wire) in their collect_* sweeps; the geo + other-region + noise gates still apply.
     def _flag(col):
         return out[col].fillna(False) if col in out.columns else pd.Series(False, index=out.index)
-    shock = _flag("is_climate_shock") | _flag("is_economic_shock")
+    shock = _flag("is_climate_shock") | _flag("is_economic_shock") | _flag("is_poverty_shock")
     has_food = txt.map(lambda t: bool(FOOD_ANCHOR.search(t)) or bool(_asf.search(t))) | ~has_lead | shock
     has_topic = txt.map(lambda t: len(_matched_topics(t)) > 0) | shock
     has_geo = out["province"].notna()
