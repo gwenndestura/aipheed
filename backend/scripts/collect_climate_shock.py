@@ -153,6 +153,14 @@ def merge() -> None:
     print(f"geocoded to a CALABARZON province: {len(new)}")
 
     new = _guard(new)
+    # Respect the dataset's permanent foreign / off-topic / PR filters, so removed
+    # content cannot creep back in via re-collection.
+    from build_final_dataset import _is_foreign, _is_offtopic
+    if len(new):
+        btxt = (new["title"].fillna("") + " " + new["summary"].fillna("")).astype(str)
+        drop = [_is_foreign(d, t) or _is_offtopic(str(ti))
+                for d, t, ti in zip(new["source_domain"], btxt, new["title"])]
+        new = new[~pd.Series(drop, index=new.index)].copy()
     # syndication dedup: one event, keep the longest-body copy
     new["_nt"] = new["title"].fillna("").map(nt)
     new = new.sort_values("summary", key=lambda s: s.str.len(), ascending=False).drop_duplicates("_nt")

@@ -34,23 +34,33 @@ import requests
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from scripts.eventregistry_cover_lgus import _key  # noqa: E402
 
-OUT = Path("data/raw/unemployment_pool.parquet")
+OUT = Path("data/raw/unemployment_pool2.parquet")
 
 CONCEPTS = {
     "Unemployment": "http://en.wikipedia.org/wiki/Unemployment",
     "Layoff": "http://en.wikipedia.org/wiki/Layoff",
     "Factory": "http://en.wikipedia.org/wiki/Factory",
     "Labour_economics": "http://en.wikipedia.org/wiki/Labour_economics",
+    # round 2 — untried concepts
+    "Recession": "http://en.wikipedia.org/wiki/Recession",
+    "Financial_crisis": "http://en.wikipedia.org/wiki/Financial_crisis",
+    "Special_economic_zone": "http://en.wikipedia.org/wiki/Special_economic_zone",
+    "Manufacturing": "http://en.wikipedia.org/wiki/Manufacturing",
 }
 KEYWORDS = ["retrenchment", "plant closure", "factory closure", "job losses",
-            "layoff", "displaced workers", "mass layoff", "business closure"]
+            "layoff", "displaced workers", "mass layoff", "business closure",
+            "PEZA", "economic zone", "ecozone", "recession", "workers laid off"]
 PROVS = ["Batangas", "Cavite", "Laguna", "Rizal", "Quezon"]
 
 GNEWS_Q = ('("job losses" OR "job cuts" OR layoff OR layoffs OR retrenchment OR '
            '"plant closure" OR "factory closure" OR "factory shutdown" OR '
            '"displaced workers" OR "lost their jobs" OR "mass layoff" OR jobless OR '
            'unemployment OR TUPAD OR "nawalan ng trabaho" OR "tanggal sa trabaho" OR '
-           '"sarang planta" OR "closed its plant" OR "ceased operations")')
+           '"sarang planta" OR "closed its plant" OR "ceased operations" OR '
+           'sahod OR sweldo OR "kawalan ng trabaho" OR nasisante OR nasante OR '
+           '"tanggalan sa trabaho" OR "sarang pabrika" OR "kawalan ng hanapbuhay" OR '
+           '"walang trabaho" OR "nawalan ng hanapbuhay" OR "sara ng pabrika" OR '
+           '"PEZA" OR "economic zone" OR redundancy OR downsizing)')
 
 
 def _rec(title, url, date, body, src):
@@ -144,8 +154,9 @@ def _gnews_one(lgu):
 
 def _gnews(rows, workers=8):
     from app.ml.corpus.gdelt_fetcher import CALABARZON_LGUS
-    lgus = [l for ls in CALABARZON_LGUS.values() for l in ls]
-    print(f"Google News RSS per-LGU unemployment ({len(lgus)} LGUs, {workers} workers)...", flush=True)
+    # per-province queries in addition to per-LGU, for wider recall
+    lgus = PROVS + [l for ls in CALABARZON_LGUS.values() for l in ls]
+    print(f"Google News RSS unemployment ({len(lgus)} queries incl. provinces, {workers} workers)...", flush=True)
     lock = threading.Lock()
     done = 0
     with ThreadPoolExecutor(max_workers=workers) as ex:
