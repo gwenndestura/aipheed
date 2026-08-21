@@ -1,7 +1,7 @@
 # CALABARZON Food-Insecurity News Dataset
 
 **Rows:** 1161 articles · **Provinces:** {'Batangas': 372, 'Cavite': 237, 'Laguna': 219, 'Quezon': 200, 'Rizal': 133}
-**Distinct cities/municipalities:** 97 of 142 · **barangay-level rows:** 26
+**Distinct cities/municipalities:** 97 of 142
 **By source:** {'corpus_recall': 1098, 'strict_reanalysis': 63}
 
 ## What this is
@@ -35,7 +35,7 @@ NLI classifier (10 food-insecurity hypotheses):
   5. **Syndication dedup** — same story under a near-identical title collapsed to one
      copy (strict version kept).
 Every dropped row and its failing gate is logged to
-`calabarzon_dataset_dropped_audit.csv` (removed this run: {'no_food_anchor+no_food_insecurity_topic': 199, 'no_food_anchor': 77, 'no_food_insecurity_topic': 60, 'other_region_subject+no_food_anchor+no_food_insecurity_topic': 52, 'off_topic_energy_foreign_or_culture+no_food_anchor+no_food_insecurity_topic': 28, 'other_region_subject': 25, 'off_topic_energy_foreign_or_culture': 21, 'other_region_subject+no_food_anchor': 16, 'off_topic_energy_foreign_or_culture+no_food_anchor': 9, 'needs_review_weak_signal': 6, 'other_region_subject+off_topic_energy_foreign_or_culture+no_food_anchor+no_food_insecurity_topic': 6, 'no_calabarzon_province+other_region_subject': 6, 'other_region_subject+off_topic_energy_foreign_or_culture': 3, 'off_topic_subject+other_region_subject': 3, 'off_topic_subject': 3, 'off_topic_subject+other_region_subject+no_food_anchor+no_food_insecurity_topic': 2, 'off_topic_subject+other_region_subject+no_food_anchor': 2, 'off_topic_energy_foreign_or_culture+no_food_insecurity_topic': 2, 'off_topic_subject+no_food_anchor': 2, 'other_region_subject+no_food_insecurity_topic': 1, 'no_calabarzon_province+other_region_subject+no_food_anchor': 1, 'no_calabarzon_province+foreign_source': 1, 'other_region_subject+off_topic_energy_foreign_or_culture+no_food_anchor': 1, 'foreign_source': 1}).
+`calabarzon_dataset_dropped_audit.csv` (removed this run: {'no_food_anchor+no_food_insecurity_topic': 199, 'no_food_anchor': 77, 'other_region_subject+no_food_anchor+no_food_insecurity_topic': 52, 'no_food_insecurity_topic': 38, 'off_topic_energy_foreign_or_culture+no_food_anchor+no_food_insecurity_topic': 28, 'other_region_subject': 25, 'no_hypothesis_match+no_food_insecurity_topic': 22, 'off_topic_energy_foreign_or_culture': 21, 'other_region_subject+no_food_anchor': 16, 'off_topic_energy_foreign_or_culture+no_food_anchor': 9, 'no_calabarzon_province+other_region_subject': 6, 'other_region_subject+off_topic_energy_foreign_or_culture+no_food_anchor+no_food_insecurity_topic': 6, 'needs_review_weak_signal': 6, 'off_topic_subject': 3, 'off_topic_subject+other_region_subject': 3, 'other_region_subject+off_topic_energy_foreign_or_culture': 3, 'off_topic_subject+other_region_subject+no_food_anchor+no_food_insecurity_topic': 2, 'off_topic_energy_foreign_or_culture+no_food_insecurity_topic': 2, 'off_topic_subject+other_region_subject+no_food_anchor': 2, 'off_topic_subject+no_food_anchor': 2, 'other_region_subject+no_food_insecurity_topic': 1, 'no_calabarzon_province+other_region_subject+no_food_anchor': 1, 'no_calabarzon_province+foreign_source': 1, 'other_region_subject+off_topic_energy_foreign_or_culture+no_food_anchor': 1, 'foreign_source': 1}).
 
 ## Geography (142-LGU enhancement)
 Re-geocoded with the full **142-LGU PSGC gazetteer** geocoder (province → city/
@@ -44,7 +44,7 @@ require a locality cue) and a non-CALABARZON conflict guard.
 
 ## Columns
 title, publication_date, news_source, author*, url, content_lead*, province,
-city_municipality, barangay, relevance_tier (HIGH/MEDIUM), food_security_dimension
+city_municipality, relevance_tier (HIGH/MEDIUM), food_security_dimension
 (A–F), food_insecurity_category, food_insecurity_topics, event_type,
 affected_commodity*, affected_population*, is_direct_food_insecurity,
 relevance_summary, relevance_reason*, relevance_score, match_level, needs_review,

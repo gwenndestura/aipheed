@@ -203,14 +203,105 @@ CATEGORY = {
     "T7": ("D", "Food stability (disaster / displacement)"),
     "T8": ("D", "Food stability (unrest)"),
     "T9": ("F", "Livelihood affecting food access"),
-    "T10": ("F", "Livelihood / employment loss affecting food access"),
 }
 EVENT_MAP = {
     "T1": "food_price_change", "T2": "malnutrition_nutrition", "T3": "food_assistance",
     "T6": "crop_production_loss", "T1b": "fishery_loss", "T4": "poverty_hardship",
     "T5": "supply_disruption", "T7": "disaster_displacement", "T8": "unrest_disruption",
-    "T9": "remittance_shock", "T10": "employment_loss",
+    "T9": "remittance_shock",
 }
+
+# ── The thesis's 10 HungerGist hypotheses (app/ml/nlp/classifier.py) ────────────
+# Every retained article must support at least one. Multi-label: an article may
+# support several. Matched on title+lead with patterns that encode each
+# hypothesis's mechanism, not just its vocabulary.
+HYPOTHESIS_TEXT = {
+    "T1": "Food supply disruption or food price increases affecting access to food",
+    "T1b": "Fish kill or aquaculture collapse reducing fish food supply",
+    "T2": "Health services or nutrition programs unavailable or unaffordable",
+    "T3": "Government food security programs ineffective or unavailable",
+    "T4": "Economic hardship reducing household income and food purchasing power",
+    "T5": "Infrastructure failures limiting food transport or storage",
+    "T6": "Agricultural land loss or conversion reducing food production",
+    "T7": "Civil displacement or evacuation reducing food access",
+    "T8": "Social unrest or conflict disrupting food systems",
+    "T9": "OFW remittance reduction reducing household food purchasing power",
+}
+HYPOTHESIS_PATTERNS: dict[str, re.Pattern] = {
+    "T1": re.compile(
+        r"\b(food price|price of (rice|pork|chicken|fish|vegetable|meat|sugar|onion)|"
+        r"rice price|presyo|price (hike|increase|surge|spike)|taas ng presyo|inflation|"
+        r"consumer price index|mahal na bilihin|bilihin|cost of food|food (shortage|supply)|"
+        r"supply (shortage|disruption|tightens)|kakulangan|unaffordable|afford)", re.I),
+    "T1b": re.compile(
+        r"\b(fish ?kill|patay na isda|red tide|algal bloom|aquaculture|fish ?pond|"
+        r"fish ?pen|fishing ban|bangus|tilapia|milkfish|fisherfolk|mangingisda|fish catch|"
+        r"dwindling catch|isda)", re.I),
+    "T2": re.compile(
+        r"\b(malnutri|malnutrisyon|stunt|wasting|undernouri|nutriti|nutrisyon|"
+        r"feeding program|supplementary feeding|nutrition (program|office|month)|"
+        r"e-?nutribun|health (center|service)|underweight)", re.I),
+    "T3": re.compile(
+        r"\b(kadiwa|\bnfa\b|rice subsidy|libreng bigas|food (pack|aid|assistance|stamp)|"
+        r"ayuda|relief goods|relief pack|\b4ps\b|pantawid|dswd|walang gutom|"
+        r"community pantr|social amelioration|\bsap\b|cash (aid|assistance|grant|transfer))", re.I),
+    "T4": re.compile(
+        r"\b(poverty|kahirapan|mahirap|poorest|indigent|low[- ]income|household income|"
+        r"no income|loss of income|income loss|lost income|nawalan ng (kita|trabaho)|"
+        r"unemploy|jobless|job (loss|cut)|laid[- ]off|lay ?off|retrench|displaced worker|"
+        r"plant (closure|shut)|factory (closure|shut)|mill (closure|shut)|floating status|"
+        r"minimum wage|living wage|sahod|sweldo|purchasing power|cost of living|"
+        r"cannot afford|can'?t afford|walang pambili|kapos|hikahos|\btupad\b)", re.I),
+    "T5": re.compile(
+        r"\b(road (closure|damage|impassable)|bridge (collapse|damage|closed)|port (closure|congestion)|"
+        r"transport (strike|disruption|cost)|logistics|cold storage|delivery (halt|disrupt)|"
+        r"supply chain|distribution (halt|disrupt)|blockade|hindi madaanan)", re.I),
+    "T6": re.compile(
+        r"\b(land conversion|farmland (loss|conversion)|agricultural land|crop (damage|loss)|"
+        r"harvest (loss|damage|failure)|agri (damage|losses)|palay (damage|loss)|"
+        r"reclamation|dredging|farmers? (lose|lost|displaced)|pinsala sa (pananim|agrikultura)|"
+        r"crop production|food production|planting|yield)", re.I),
+    "T7": re.compile(
+        r"\b(evacuat|evacuee|displaced (resident|famil|household)|state of calamity|"
+        r"typhoon|bagyo|habagat|monsoon|flood|baha|landslide|storm|eruption|volcano|ashfall|"
+        r"lumikas|nasalanta|relief operation|stranded)", re.I),
+    "T8": re.compile(
+        r"\b(protest|rally|strike|unrest|conflict|clash|dispute|demolition|"
+        r"land dispute|agrarian (dispute|conflict)|picket|barricade|welga|kilos protesta)", re.I),
+    "T9": re.compile(
+        r"\b(\bofw\b|overseas filipino|remittance|repatriat|migrant worker|"
+        r"nagpapadala|padala|deployment ban|owwa)", re.I),
+}
+
+
+# Bridge: each food-insecurity topic implies the hypothesis whose mechanism it
+# evidences. Reusing the well-tested TOPIC_PATTERNS vocabulary here (rather than
+# duplicating it inside HYPOTHESIS_PATTERNS) keeps the two in step and guarantees
+# that anything passing the topic gate carries at least one hypothesis.
+TOPIC_TO_HYPOTHESIS = {
+    "food_security_general": "T1",       # availability / access
+    "hunger_food_deprivation": "T1",     # deprivation from supply-or-price shock
+    "food_prices_affordability": "T1",   # price -> access
+    "rice_staple_supply": "T1",          # staple supply
+    "supply_chain_distribution": "T5",   # transport / storage failure
+    "malnutrition_undernutrition": "T2",  # nutrition services
+    "food_assistance_programs": "T3",    # government food programmes
+    "poverty_food_access": "T4",         # household purchasing power
+    "livelihood_income": "T4",           # income -> purchasing power
+    "agricultural_production": "T6",     # production capacity
+    "pests_crop_disease": "T6",          # production loss
+    "crop_losses_disaster": "T6",        # production loss from hazard
+    "fisheries_livestock": "T1b",        # fish/aquaculture supply
+}
+
+
+def _matched_hypotheses(text: str) -> list[str]:
+    """Multi-label: every thesis hypothesis the text supports, from the explicit
+    mechanism patterns plus the topic->hypothesis bridge."""
+    hs = {h for h, pat in HYPOTHESIS_PATTERNS.items() if pat.search(text)}
+    hs |= {TOPIC_TO_HYPOTHESIS[t] for t in _matched_topics(text)
+           if t in TOPIC_TO_HYPOTHESIS}
+    return sorted(hs, key=lambda x: list(HYPOTHESIS_TEXT).index(x))
 
 
 def _recover_text() -> pd.DataFrame:
@@ -300,10 +391,17 @@ def build() -> None:
     # Prefer the new geocoder's finer tags; fall back to reanalysis where blank.
     df["province_final"] = g["province_name"].fillna(df["province"])
     df["city_municipality_final"] = g["lgu_name"].fillna(df["city_municipality"])
-    df["barangay_final"] = g["barangay_name"]
     df["match_level"] = g["match_level"]
 
     df["food_insecurity_topics"] = df["_text"].map(lambda t: ",".join(_matched_topics(t)))
+    # Thesis requirement: every article must support >=1 of the 10 hypotheses.
+    # Multi-label; seeded with the row's own NLI/assigned hypothesis so a
+    # deliberately-tagged determinant row always carries its class.
+    hyp = df["_text"].map(_matched_hypotheses)
+    df["hypothesis_topics"] = [
+        ",".join(sorted(set(hs) | ({th} if isinstance(th, str) and th in HYPOTHESIS_TEXT else set()),
+                        key=lambda x: list(HYPOTHESIS_TEXT).index(x)))
+        for hs, th in zip(hyp, df["top_hypothesis"])]
     # After the topic gate every kept row has >=1 topic, so flag instead the
     # SOFTEST rows for an optional eyeball: those whose only signals are indirect
     # (poverty / livelihood / supply-chain) with no direct food/hunger/production
@@ -332,9 +430,9 @@ def build() -> None:
         "food_insecurity_relevance": "relevance_tier",
     })[[
         "title", "publication_date", "news_source", "author", "url",
-        "content_lead", "province_final", "city_municipality_final", "barangay_final",
+        "content_lead", "province_final", "city_municipality_final",
         "relevance_tier", "food_security_dimension", "food_insecurity_category",
-        "food_insecurity_topics", "event_type",
+        "food_insecurity_topics", "hypothesis_topics", "event_type",
         "affected_commodity", "affected_population", "is_direct_food_insecurity",
         "relevance_summary", "relevance_reason", "relevance_score", "match_level",
         "needs_review", "data_source", "article_id", "is_climate_shock", "is_economic_shock",
@@ -342,7 +440,6 @@ def build() -> None:
     ]].rename(columns={
         "province_final": "province",
         "city_municipality_final": "city_municipality",
-        "barangay_final": "barangay",
     })
 
     # STRICT + CLEANED: every retained row must be tied to a CALABARZON province
@@ -391,7 +488,7 @@ def build() -> None:
           f" | poverty-shock rows: {n_pov}")
     print("province:", out["province"].value_counts(dropna=False).to_dict())
     print("distinct city/municipality:", out["city_municipality"].nunique(),
-          "| barangay-level rows:", int(out["barangay"].notna().sum()))
+          "| hypothesis-mapped rows:", int((out["hypothesis_topics"].fillna("")!="").sum()))
 
     _coverage_matrix(out)
     _readme(out, dropped)
@@ -447,14 +544,24 @@ def _clean(out: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame]:
     # carrying a food or disaster token) — matched on the title only.
     offtopic = out["title"].map(_is_offtopic)
 
-    keep_mask = has_food & has_topic & has_geo & ~other_subject & ~neg & ~foreign & ~offtopic
+    # Thesis requirement: an article that cannot be connected to any of the 10
+    # hypotheses is excluded, however food-ish its vocabulary.
+    has_hyp = (out["hypothesis_topics"].fillna("").str.len() > 0
+               if "hypothesis_topics" in out.columns
+               else pd.Series(True, index=out.index))
+
+    keep_mask = (has_food & has_topic & has_geo & has_hyp
+                 & ~other_subject & ~neg & ~foreign & ~offtopic)
     kept = out[keep_mask].copy()
     dropped = out[~keep_mask].copy()
     reasons = []
-    for f, tp, g, o, n, fr, ot in zip(has_food[~keep_mask], has_topic[~keep_mask],
-                                      has_geo[~keep_mask], other_subject[~keep_mask],
-                                      neg[~keep_mask], foreign[~keep_mask], offtopic[~keep_mask]):
+    for f, tp, g, o, n, fr, ot, hy in zip(has_food[~keep_mask], has_topic[~keep_mask],
+                                          has_geo[~keep_mask], other_subject[~keep_mask],
+                                          neg[~keep_mask], foreign[~keep_mask],
+                                          offtopic[~keep_mask], has_hyp[~keep_mask]):
         r = []
+        if not hy:
+            r.append("no_hypothesis_match")
         if not g:
             r.append("no_calabarzon_province")
         if fr:
@@ -476,8 +583,6 @@ def _clean(out: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame]:
 
 def _summary_row(r) -> str:
     loc = []
-    if pd.notna(r.get("barangay_final")):
-        loc.append(f"Brgy. {r['barangay_final']}")
     if pd.notna(r.get("city_municipality_final")):
         loc.append(str(r["city_municipality_final"]))
     loc.append(str(r["province_final"]) if pd.notna(r.get("province_final")) else "CALABARZON (region-level)")
@@ -512,13 +617,12 @@ def _readme(out: pd.DataFrame, dropped: pd.DataFrame) -> None:
     n = len(out)
     provs = out["province"].value_counts(dropna=False).to_dict()
     lgus = out["city_municipality"].nunique()
-    brgy = int(out["barangay"].notna().sum())
     drop_reasons = dropped["drop_reason"].value_counts().to_dict()
     src = out["data_source"].value_counts().to_dict()
     txt = f"""# CALABARZON Food-Insecurity News Dataset
 
 **Rows:** {n} articles · **Provinces:** {provs}
-**Distinct cities/municipalities:** {lgus} of 142 · **barangay-level rows:** {brgy}
+**Distinct cities/municipalities:** {lgus} of 142
 **By source:** {src}
 
 ## What this is
@@ -561,7 +665,7 @@ require a locality cue) and a non-CALABARZON conflict guard.
 
 ## Columns
 title, publication_date, news_source, author*, url, content_lead*, province,
-city_municipality, barangay, relevance_tier (HIGH/MEDIUM), food_security_dimension
+city_municipality, relevance_tier (HIGH/MEDIUM), food_security_dimension
 (A–F), food_insecurity_category, food_insecurity_topics, event_type,
 affected_commodity*, affected_population*, is_direct_food_insecurity,
 relevance_summary, relevance_reason*, relevance_score, match_level, needs_review,
