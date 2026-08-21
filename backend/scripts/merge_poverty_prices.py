@@ -158,9 +158,20 @@ def merge() -> None:
     ttl = new["title"].fillna("").astype(str)
     lead = new["summary"].fillna("").astype(str)
     has_lgu = new["lgu_name"].notna() & (new["lgu_name"].astype(str).str.len() > 0)
-    keep = ((has_lgu | txt.map(lambda t: bool(LOCAL.search(t)))
+    # An Event Registry body runs to 2,000 chars and routinely name-drops other
+    # places far from the story's subject, so the other-region test looks at the
+    # SUBJECT window only — the headline plus the lede — rather than the whole body.
+    subj = (new["title"].fillna("") + " " + lead.str.slice(0, 300)).astype(str)
+    # CALABARZON must be the story's SUBJECT, not a name-drop. A national wire
+    # ("DA: agricultural damage nears P700M", "Fish, veggies to cost more due to
+    # oil price hike") routinely mentions a province deep in the body, so a loose
+    # province-near-a-cue test lets national coverage in and mis-attributes it to
+    # an LGU. Require a named CALABARZON LGU, a CALABARZON dateline, or the
+    # province in the headline itself.
+    prov_in_title = ttl.map(lambda t: bool(re.search(PROV, t, re.I)))
+    keep = ((has_lgu | prov_in_title
              | lead.map(lambda t: bool(DATELINE.search(t))))
-            & ~txt.map(lambda t: bool(BADGEO.search(t)))
+            & ~subj.map(lambda t: bool(BADGEO.search(t)))
             & ~ttl.map(lambda t: bool(NATIONAL.search(t)))
             & ~txt.map(lambda t: bool(FOREIGN.search(t))))
     new = new[keep].copy()
@@ -205,5 +216,93 @@ def merge() -> None:
     print("hypothesis spread:", new["top_hypothesis"].value_counts().to_dict())
 
 
+def merge_general() -> None:
+    """Second pass over the same pool using the STANDARD food-insecurity gate.
+
+    The poverty/prices gate above is deliberately scoped to the price and
+    purchasing-power chains, so it lets through nothing else. But the pool also
+    contains ordinary food-insecurity stories (anti-hunger programmes, relief
+    goods to flood-hit families, food-production facilities). Spec §1 asks for
+    food insecurity AND its drivers, so those are captured here with the same
+    food-anchor + topic + CALABARZON-subject rules the main pipeline uses.
+    """
+    from app.ml.corpus.location_geocoder import geocode_location_batch, _OTHER_LOC
+    from build_final_dataset import (_NEGATIVE, _matched_topics, _matched_hypotheses,
+                                     _is_foreign, _is_offtopic)
+    from precision_pass import FOOD_ANCHOR
+    _ASF = re.compile(r"\b(asf|african swine fever|swine fever)\b", re.I)
+    pool = pd.read_parquet(POOL)
+    c = pd.read_parquet(GEO)
+
+    def nt(s):
+        return re.sub(r"[^a-z0-9 ]", "", str(s).lower()).strip()
+    hid, hln, htt = set(c["article_id"]), set(c["link"].dropna()), set(c["title"].fillna("").map(nt))
+    if FINAL.exists():
+        fin = pd.read_parquet(FINAL)
+        hln |= set(fin["url"].dropna())
+        htt |= set(fin["title"].fillna("").map(nt))
+    pool["_nt"] = pool["title"].fillna("").map(nt)
+    new = pool[~(pool["article_id"].isin(hid) | pool["link"].isin(hln) | pool["_nt"].isin(htt))]
+    new = (new.drop_duplicates("article_id").drop_duplicates("link")
+           .drop_duplicates("_nt").drop(columns=["_nt"]))
+    print(f"[general] new: {len(new)}")
+
+    new = geocode_location_batch(new)
+    new = new[new["province_name"].notna()].copy()
+    txt = (new["title"].fillna("") + " " + new["summary"].fillna("")).astype(str)
+    ttl = new["title"].fillna("").astype(str)
+    lead = new["summary"].fillna("").astype(str)
+    subj = (ttl + " " + lead.str.slice(0, 300)).astype(str)
+    has_lgu = new["lgu_name"].notna() & (new["lgu_name"].astype(str).str.len() > 0)
+    prov_in_title = ttl.map(lambda t: bool(re.search(PROV, t, re.I)))
+    keep = (txt.map(lambda t: bool(FOOD_ANCHOR.search(t)) or bool(_ASF.search(t)))
+            & txt.map(lambda t: len(_matched_topics(t)) > 0)
+            & txt.map(lambda t: len(_matched_hypotheses(t)) > 0)
+            & (has_lgu | prov_in_title | lead.map(lambda t: bool(DATELINE.search(t))))
+            & ~subj.map(lambda t: bool(BADGEO.search(t)))
+            & ~ttl.map(lambda t: bool(NATIONAL.search(t)))
+            & ~txt.map(lambda t: bool(_OTHER_LOC.search(t.lower())))
+            & ~txt.map(lambda t: bool(_NEGATIVE.search(t))))
+    new = new[keep].copy()
+    if len(new):
+        btxt = (new["title"].fillna("") + " " + new["summary"].fillna("")).astype(str)
+        drop = [_is_foreign(d, t) or _is_offtopic(str(ti))
+                for d, t, ti in zip(new["source_domain"], btxt, new["title"])]
+        new = new[~pd.Series(drop, index=new.index)].copy()
+    new["_nt"] = new["title"].fillna("").map(nt)
+    new = new.sort_values("summary", key=lambda s: s.str.len(), ascending=False).drop_duplicates("_nt")
+    new = new.drop(columns=["_nt"])
+    print(f"[general] standard food gate + CALABARZON subject: {len(new)}")
+    if new.empty:
+        return
+    new["is_relevant"] = True
+    new["food_insecurity_score"] = 0.5
+    txt2 = (new["title"].fillna("") + " " + new["summary"].fillna("")).astype(str)
+    new["top_hypothesis"] = txt2.map(lambda t: (_matched_hypotheses(t) or ["T1"])[0])
+    new["top_topic_name"] = "food_insecurity_general"
+    new["fetcher_source"] = "pp_general"
+
+    def q(p):
+        try:
+            dt = pd.Timestamp(p)
+            return f"{dt.year}-Q{(dt.month - 1) // 3 + 1}"
+        except Exception:
+            return ""
+    new["quarter"] = new["published"].map(q)
+    cols = list(c.columns)
+    for x in cols:
+        if x not in new.columns:
+            new[x] = None
+    comb = pd.concat([c, new[cols]], ignore_index=True)
+    comb = comb.drop_duplicates("article_id").drop_duplicates("link")
+    comb.to_parquet(GEO, index=False)
+    print(f"[general] corpus: {len(c)} -> {len(comb)} (+{len(comb) - len(c)})")
+    print("[general] province:", new["province_name"].value_counts().to_dict())
+
+
 if __name__ == "__main__":
-    merge()
+    import argparse
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--general", action="store_true")
+    a = ap.parse_args()
+    merge_general() if a.general else merge()
