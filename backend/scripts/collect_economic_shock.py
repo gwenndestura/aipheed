@@ -47,7 +47,8 @@ COLS = ["title", "link", "article_id", "published", "summary", "source_domain"]
 # Specific employment-shock signals (NOT the broad livelihood/income topic).
 UNEMP = re.compile(
     r"\b(unemployment|jobless|joblessness|job loss(es)?|job cut(s)?|lay ?off(s|ed)?|"
-    r"laid off|retrench\w*|displaced workers?|mass (termination|layoff|retrench)|"
+    r"laid[- ]off|retrench\w*|displaced workers?|mass (termination|layoff|retrench)|"
+    r"floating status|closed down|close[sd]? down|no[- ]work[- ]no[- ]pay|"
     r"plant closure|factory closure|factory shutdown|closed (down )?(its )?(plant|factory|"
     r"mill|operations)|cease(d)? operations|ceased operation|halt(ed)? operations|"
     r"business closure|shut ?down|redundan\w*|workforce reduction|downsiz\w*|furlough\w*|"
@@ -71,7 +72,8 @@ _ECON_NOISE = re.compile(r"\b(internet gaming|\bpogo\b|offshore gaming|e-?sabong
 # so a politician-visit or macro story whose body merely mentions "trabaho" is dropped.
 _TITLE_SIGNAL = re.compile(
     r"\b(plant|mill|factory|pabrika|planta|worker|manggagawa|jobs?|job loss|tupad|"
-    r"displaced|shut ?down|closure|closed|lay ?off|laid off|retrench|livelihood|"
+    r"displaced|shut ?down|closure|closed|lay ?off|laid[- ]off|retrench|livelihood|"
+    r"floating status|side jobs|"
     r"kabuhayan|cash (aid|assistance)|financial assistance|hiring|hire|no work|"
     r"unemploy|jobless|nawalan|tanggal|negosyo|pandemic-affected|lose livelihood|"
     r"lost (their )?jobs|out of work)\b", re.I)
@@ -88,6 +90,12 @@ CUE = (r"(worker|employe|plant|factory|mill|company|firm|ecozone|economic zone|"
        r"industrial (park|estate)|laid off|retrench|closure|closed|displaced|"
        r"manggagawa|trabahador|empleyado|pabrika|planta)")
 LOCAL = re.compile(CUE + r".{0,60}?" + PROV + "|" + PROV + r".{0,60}?" + CUE, re.I)
+# A news dateline ("LAGUNA, Philippines - ...", "LUCENA CITY, Quezon -") establishes
+# the story's location on its own, even when the province sits far from the worker
+# cue in the body. Anchored near the start of the lead so a passing mention doesn't
+# qualify.
+DATELINE = re.compile(r"^.{0,200}?\b[A-Z][A-Za-z ]{0,24}?,?\s*" + PROV +
+                      r"\s*(CITY)?\s*,?\s*(Philippines)?\s*[-–—]", re.I)
 
 
 def _norm_pool(f: str) -> pd.DataFrame | None:
@@ -134,7 +142,9 @@ def _guard(new: pd.DataFrame) -> pd.DataFrame:
     ttl = new["title"].fillna("").astype(str)
     lgu = new["lgu_name"]
     has_lgu = lgu.notna() & (lgu.astype(str).str.len() > 0)
-    calzn_subject = has_lgu | txt.map(lambda t: bool(LOCAL.search(t)))
+    lead = new["summary"].fillna("").astype(str)
+    calzn_subject = (has_lgu | txt.map(lambda t: bool(LOCAL.search(t)))
+                     | lead.map(lambda t: bool(DATELINE.search(t))))
     keep = (calzn_subject
             & ttl.map(lambda t: bool(_TITLE_SIGNAL.search(t)))      # employment shock in the headline
             & ~txt.map(lambda t: bool(BADGEO.search(t)))
