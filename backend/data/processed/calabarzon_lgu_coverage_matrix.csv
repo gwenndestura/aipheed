@@ -1,143 +1,143 @@
-﻿province_name,lgu_name,lgu_psgc,coverage
-Batangas,Agoncillo,041001000,covered_relevant
-Batangas,Alitagtag,041002000,mentioned_only
-Batangas,Balayan,041003000,covered_relevant
-Batangas,Balete,041004000,covered_relevant
-Batangas,Batangas City,041005000,covered_relevant
-Batangas,Bauan,041006000,covered_relevant
-Batangas,Calaca,041007000,covered_relevant
-Batangas,Calatagan,041008000,covered_relevant
-Batangas,Cuenca,041009000,mentioned_only
-Batangas,Ibaan,041010000,covered_relevant
-Batangas,Laurel,041011000,covered_relevant
-Batangas,Lemery,041012000,covered_relevant
-Batangas,Lian,041013000,covered_relevant
-Batangas,Lipa,041014000,covered_relevant
-Batangas,Lobo,041015000,covered_relevant
-Batangas,Mabini,041016000,covered_relevant
-Batangas,Malvar,041017000,mentioned_only
-Batangas,Mataasnakahoy,041018000,covered_relevant
-Batangas,Nasugbu,041019000,covered_relevant
-Batangas,Padre Garcia,041020000,mentioned_only
-Batangas,Rosario,041021000,covered_relevant
-Batangas,San Jose,041022000,covered_relevant
-Batangas,San Juan,041023000,covered_relevant
-Batangas,San Luis,041024000,covered_relevant
-Batangas,San Nicolas,041025000,covered_relevant
-Batangas,San Pascual,041026000,covered_relevant
-Batangas,Santa Teresita,041027000,mentioned_only
-Batangas,Sto. Tomas,041028000,covered_relevant
-Batangas,Taal,041029000,covered_relevant
-Batangas,Talisay,041030000,covered_relevant
-Batangas,Tanauan,041031000,covered_relevant
-Batangas,Taysan,041032000,mentioned_only
-Batangas,Tingloy,041033000,covered_relevant
-Batangas,Tuy,041034000,absent
-Cavite,Alfonso,042101000,covered_relevant
-Cavite,Amadeo,042102000,covered_relevant
-Cavite,Bacoor,042103000,covered_relevant
-Cavite,Carmona,042104000,covered_relevant
-Cavite,Cavite City,042105000,covered_relevant
-Cavite,Dasmariñas,042106000,covered_relevant
-Cavite,Gen. Mariano Alvarez,042123000,mentioned_only
-Cavite,General Emilio Aguinaldo,042107000,mentioned_only
-Cavite,General Trias,042108000,covered_relevant
-Cavite,Imus,042109000,covered_relevant
-Cavite,Indang,042110000,mentioned_only
-Cavite,Kawit,042111000,covered_relevant
-Cavite,Magallanes,042112000,mentioned_only
-Cavite,Maragondon,042113000,covered_relevant
-Cavite,Mendez,042114000,mentioned_only
-Cavite,Naic,042115000,covered_relevant
-Cavite,Noveleta,042116000,covered_relevant
-Cavite,Rosario,042117000,covered_relevant
-Cavite,Silang,042118000,covered_relevant
-Cavite,Tagaytay,042119000,covered_relevant
-Cavite,Tanza,042120000,covered_relevant
-Cavite,Ternate,042121000,covered_relevant
-Cavite,Trece Martires,042122000,covered_relevant
-Laguna,Alaminos,043401000,covered_relevant
-Laguna,Bay,043402000,mentioned_only
-Laguna,Biñan,043403000,covered_relevant
-Laguna,Cabuyao,043404000,mentioned_only
-Laguna,Calamba,043405000,covered_relevant
-Laguna,Calauan,043406000,covered_relevant
-Laguna,Cavinti,043407000,covered_relevant
-Laguna,Famy,043408000,absent
-Laguna,Kalayaan,043409000,covered_relevant
-Laguna,Liliw,043410000,covered_relevant
-Laguna,Los Baños,043411000,covered_relevant
-Laguna,Luisiana,043412000,covered_relevant
-Laguna,Lumban,043413000,covered_relevant
-Laguna,Mabitac,043414000,covered_relevant
-Laguna,Magdalena,043415000,mentioned_only
-Laguna,Majayjay,043416000,covered_relevant
-Laguna,Nagcarlan,043417000,covered_relevant
-Laguna,Paete,043418000,mentioned_only
-Laguna,Pagsanjan,043419000,covered_relevant
-Laguna,Pakil,043420000,mentioned_only
-Laguna,Pangil,043421000,covered_relevant
-Laguna,Pila,043422000,mentioned_only
-Laguna,Rizal,043423000,absent
-Laguna,San Pablo,043424000,covered_relevant
-Laguna,San Pedro,043425000,covered_relevant
-Laguna,Santa Cruz,043426000,mentioned_only
-Laguna,Santa Maria,043427000,mentioned_only
-Laguna,Santa Rosa,043428000,covered_relevant
-Laguna,Siniloan,043429000,mentioned_only
-Laguna,Victoria,043430000,covered_relevant
-Quezon,Agdangan,045601000,mentioned_only
-Quezon,Alabat,045602000,covered_relevant
-Quezon,Atimonan,045603000,mentioned_only
-Quezon,Buenavista,045605000,mentioned_only
-Quezon,Burdeos,045606000,covered_relevant
-Quezon,Calauag,045607000,mentioned_only
-Quezon,Candelaria,045608000,covered_relevant
-Quezon,Catanauan,045610000,covered_relevant
-Quezon,Dolores,045615000,mentioned_only
-Quezon,General Luna,045616000,mentioned_only
-Quezon,General Nakar,045617000,covered_relevant
-Quezon,Guinayangan,045618000,covered_relevant
-Quezon,Gumaca,045619000,covered_relevant
-Quezon,Infanta,045620000,covered_relevant
-Quezon,Jomalig,045621000,covered_relevant
-Quezon,Lopez,045622000,covered_relevant
-Quezon,Lucban,045623000,covered_relevant
-Quezon,Lucena,045624000,covered_relevant
-Quezon,Macalelon,045625000,mentioned_only
-Quezon,Mauban,045627000,covered_relevant
-Quezon,Mulanay,045628000,covered_relevant
-Quezon,Padre Burgos,045629000,mentioned_only
-Quezon,Pagbilao,045630000,covered_relevant
-Quezon,Panukulan,045631000,covered_relevant
-Quezon,Patnanungan,045632000,covered_relevant
-Quezon,Perez,045633000,mentioned_only
-Quezon,Pitogo,045634000,mentioned_only
-Quezon,Plaridel,045635000,mentioned_only
-Quezon,Polillo,045636000,mentioned_only
-Quezon,Quezon,045637000,absent
-Quezon,Real,045638000,covered_relevant
-Quezon,Sampaloc,045639000,mentioned_only
-Quezon,San Andres,045640000,mentioned_only
-Quezon,San Antonio,045641000,mentioned_only
-Quezon,San Francisco,045642000,covered_relevant
-Quezon,San Narciso,045644000,mentioned_only
-Quezon,Sariaya,045645000,covered_relevant
-Quezon,Tagkawayan,045646000,covered_relevant
-Quezon,Tayabas,045647000,covered_relevant
-Quezon,Tiaong,045648000,mentioned_only
-Quezon,Unisan,045649000,mentioned_only
-Rizal,Angono,045801000,covered_relevant
-Rizal,Antipolo,045802000,covered_relevant
-Rizal,Baras,045803000,covered_relevant
-Rizal,Binangonan,045804000,covered_relevant
-Rizal,Cainta,045805000,covered_relevant
-Rizal,Cardona,045806000,covered_relevant
-Rizal,Jala-Jala,045807000,absent
-Rizal,Morong,045809000,covered_relevant
-Rizal,Pililla,045810000,covered_relevant
-Rizal,Rodriguez,045808000,covered_relevant
-Rizal,San Mateo,045811000,covered_relevant
-Rizal,Tanay,045812000,covered_relevant
-Rizal,Taytay,045813000,covered_relevant
-Rizal,Teresa,045814000,covered_relevant
+﻿province,city_municipality,lgu_psgc,articles,coverage
+Batangas,Agoncillo,041001000,2,covered_relevant
+Batangas,Alitagtag,041002000,0,absent
+Batangas,Balayan,041003000,0,absent
+Batangas,Balete,041004000,0,absent
+Batangas,Batangas City,041005000,2,covered_relevant
+Batangas,Bauan,041006000,0,absent
+Batangas,Calaca,041007000,0,absent
+Batangas,Calatagan,041008000,1,covered_relevant
+Batangas,Cuenca,041009000,0,absent
+Batangas,Ibaan,041010000,1,covered_relevant
+Batangas,Laurel,041011000,3,covered_relevant
+Batangas,Lemery,041012000,0,absent
+Batangas,Lian,041013000,3,covered_relevant
+Batangas,Lipa,041014000,4,covered_relevant
+Batangas,Lobo,041015000,8,covered_relevant
+Batangas,Mabini,041016000,0,absent
+Batangas,Malvar,041017000,0,absent
+Batangas,Mataasnakahoy,041018000,0,absent
+Batangas,Nasugbu,041019000,2,covered_relevant
+Batangas,Padre Garcia,041020000,0,absent
+Batangas,Rosario,041021000,1,covered_relevant
+Batangas,San Jose,041022000,1,covered_relevant
+Batangas,San Juan,041023000,0,absent
+Batangas,San Luis,041024000,0,absent
+Batangas,San Nicolas,041025000,0,absent
+Batangas,San Pascual,041026000,1,covered_relevant
+Batangas,Santa Teresita,041027000,0,absent
+Batangas,Sto. Tomas,041028000,0,absent
+Batangas,Taal,041029000,5,covered_relevant
+Batangas,Talisay,041030000,1,covered_relevant
+Batangas,Tanauan,041031000,0,absent
+Batangas,Taysan,041032000,0,absent
+Batangas,Tingloy,041033000,1,covered_relevant
+Batangas,Tuy,041034000,0,absent
+Cavite,Alfonso,042101000,0,absent
+Cavite,Amadeo,042102000,1,covered_relevant
+Cavite,Bacoor,042103000,2,covered_relevant
+Cavite,Carmona,042104000,0,absent
+Cavite,Cavite City,042105000,5,covered_relevant
+Cavite,Dasmariñas,042106000,0,absent
+Cavite,Gen. Mariano Alvarez,042123000,0,absent
+Cavite,General Emilio Aguinaldo,042107000,0,absent
+Cavite,General Trias,042108000,3,covered_relevant
+Cavite,Imus,042109000,3,covered_relevant
+Cavite,Indang,042110000,0,absent
+Cavite,Kawit,042111000,0,absent
+Cavite,Magallanes,042112000,0,absent
+Cavite,Maragondon,042113000,2,covered_relevant
+Cavite,Mendez,042114000,0,absent
+Cavite,Naic,042115000,2,covered_relevant
+Cavite,Noveleta,042116000,3,covered_relevant
+Cavite,Rosario,042117000,0,absent
+Cavite,Silang,042118000,0,absent
+Cavite,Tagaytay,042119000,1,covered_relevant
+Cavite,Tanza,042120000,3,covered_relevant
+Cavite,Ternate,042121000,1,covered_relevant
+Cavite,Trece Martires,042122000,1,covered_relevant
+Laguna,Alaminos,043401000,0,absent
+Laguna,Bay,043402000,0,absent
+Laguna,Biñan,043403000,0,absent
+Laguna,Cabuyao,043404000,0,absent
+Laguna,Calamba,043405000,2,covered_relevant
+Laguna,Calauan,043406000,0,absent
+Laguna,Cavinti,043407000,1,covered_relevant
+Laguna,Famy,043408000,0,absent
+Laguna,Kalayaan,043409000,0,absent
+Laguna,Liliw,043410000,0,absent
+Laguna,Los Baños,043411000,3,covered_relevant
+Laguna,Luisiana,043412000,0,absent
+Laguna,Lumban,043413000,0,absent
+Laguna,Mabitac,043414000,1,covered_relevant
+Laguna,Magdalena,043415000,0,absent
+Laguna,Majayjay,043416000,0,absent
+Laguna,Nagcarlan,043417000,0,absent
+Laguna,Paete,043418000,0,absent
+Laguna,Pagsanjan,043419000,0,absent
+Laguna,Pakil,043420000,0,absent
+Laguna,Pangil,043421000,0,absent
+Laguna,Pila,043422000,0,absent
+Laguna,Rizal,043423000,0,absent
+Laguna,San Pablo,043424000,1,covered_relevant
+Laguna,San Pedro,043425000,1,covered_relevant
+Laguna,Santa Cruz,043426000,0,absent
+Laguna,Santa Maria,043427000,0,absent
+Laguna,Santa Rosa,043428000,1,covered_relevant
+Laguna,Siniloan,043429000,0,absent
+Laguna,Victoria,043430000,1,covered_relevant
+Quezon,Agdangan,045601000,0,absent
+Quezon,Alabat,045602000,1,covered_relevant
+Quezon,Atimonan,045603000,0,absent
+Quezon,Buenavista,045605000,0,absent
+Quezon,Burdeos,045606000,0,absent
+Quezon,Calauag,045607000,0,absent
+Quezon,Candelaria,045608000,0,absent
+Quezon,Catanauan,045610000,0,absent
+Quezon,Dolores,045615000,0,absent
+Quezon,General Luna,045616000,0,absent
+Quezon,General Nakar,045617000,1,covered_relevant
+Quezon,Guinayangan,045618000,0,absent
+Quezon,Gumaca,045619000,0,absent
+Quezon,Infanta,045620000,0,absent
+Quezon,Jomalig,045621000,0,absent
+Quezon,Lopez,045622000,1,covered_relevant
+Quezon,Lucban,045623000,0,absent
+Quezon,Lucena,045624000,9,covered_relevant
+Quezon,Macalelon,045625000,0,absent
+Quezon,Mauban,045627000,0,absent
+Quezon,Mulanay,045628000,0,absent
+Quezon,Padre Burgos,045629000,0,absent
+Quezon,Pagbilao,045630000,1,covered_relevant
+Quezon,Panukulan,045631000,0,absent
+Quezon,Patnanungan,045632000,0,absent
+Quezon,Perez,045633000,0,absent
+Quezon,Pitogo,045634000,0,absent
+Quezon,Plaridel,045635000,0,absent
+Quezon,Polillo,045636000,0,absent
+Quezon,Quezon,045637000,0,absent
+Quezon,Real,045638000,1,covered_relevant
+Quezon,Sampaloc,045639000,0,absent
+Quezon,San Andres,045640000,0,absent
+Quezon,San Antonio,045641000,0,absent
+Quezon,San Francisco,045642000,0,absent
+Quezon,San Narciso,045644000,0,absent
+Quezon,Sariaya,045645000,2,covered_relevant
+Quezon,Tagkawayan,045646000,1,covered_relevant
+Quezon,Tayabas,045647000,1,covered_relevant
+Quezon,Tiaong,045648000,0,absent
+Quezon,Unisan,045649000,0,absent
+Rizal,Angono,045801000,1,covered_relevant
+Rizal,Antipolo,045802000,5,covered_relevant
+Rizal,Baras,045803000,0,absent
+Rizal,Binangonan,045804000,0,absent
+Rizal,Cainta,045805000,3,covered_relevant
+Rizal,Cardona,045806000,2,covered_relevant
+Rizal,Jala-Jala,045807000,0,absent
+Rizal,Morong,045809000,0,absent
+Rizal,Pililla,045810000,3,covered_relevant
+Rizal,Rodriguez,045808000,2,covered_relevant
+Rizal,San Mateo,045811000,3,covered_relevant
+Rizal,Tanay,045812000,0,absent
+Rizal,Taytay,045813000,2,covered_relevant
+Rizal,Teresa,045814000,0,absent

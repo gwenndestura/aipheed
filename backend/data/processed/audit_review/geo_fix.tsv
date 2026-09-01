@@ -1,0 +1,19 @@
+article_id	province	city_municipality	reason
+26e60175b1700039f5300fc30b068202	Batangas	Lian	article subject is Lian, not San Luis
+281f8532781f3f1254338063fefcfb6d	Cavite	Tagaytay	pineapple farm is in Tagaytay, Cavite
+86b4819ef8e093217474a975ef288418	Cavite		article subject is Cavite province
+b40f4801910058874ccb68c69ee0f689	Cavite		article subject is Cavite province
+2c958e487636184e45b4c2812775badc	Cavite		article subject is Cavite province
+c4404af26f56b6bd73dbeb3dc5c788cb	Cavite		article subject is Cavite province
+50d8ae89fc8de5bfadb3921ce48b0a30	Laguna	San Pablo	fish kill was in Sampaloc Lake, San Pablo City
+70f22ab463840f8823892c883079d1da	Laguna	Santa Rosa	Honda plant is in Santa Rosa
+da85f6f576032cfca769ad3774b9083d	Quezon	Lopez	stranding occurred in Lopez, not Lucena
+35d5256d7899d922a5d1af5dc02bce97	Quezon		province-wide evacuation, Lucena is only the dateline
+5fd35f85c25908df31c2cfebee33a152	Quezon		province-wide evacuation, Lucena is only the dateline
+abdfff33636ffcd3c63b157c55e129f9	Quezon		province-wide evacuation, Lucena is only the dateline
+976da5670731b5ca38c60fddc9eaf9d7	Batangas		agricultural damage was in Batangas, Lucena is only the dateline
+6d105f8445190e7fb9c73e21e7365c2d	Rizal	Taytay	subject is Taytay, Rizal, Lucena is only the dateline
+8ce58d6b6ae30dd254e5570bae3de548	Batangas	Lian	subject is Lian, Batangas, Lucena is only the dateline
+526f7d8ec8ae59e1a111ac7950200f4b	Laguna		aid covered Cabuyao and Pagsanjan, province level is the accurate scope
+b55d67704b2291b52cf9a48bde8177a8	Laguna		datelined Laguna province, Santa Rosa was an unverified guess
+0901fca8722f8f638ba5f20457b47267	Batangas		Taal Lake spans several towns; not the municipality of Taal

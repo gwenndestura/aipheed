@@ -186,6 +186,52 @@ def _is_offtopic(title: str) -> bool:
     return bool(_RECLAM.search(t)) and not bool(_FISHFARM.search(t))
 
 
+# ── Source attribution ────────────────────────────────────────────────────────
+# Google News is an AGGREGATOR: rows harvested through it stored "news.google.com"
+# as the source, which is not the publication of record. Google News titles carry
+# the real publisher as a " - Publisher" suffix, so the publisher is recovered from
+# there and the suffix stripped off the headline. Names are canonicalised to one
+# spelling per outlet so source counts are meaningful.
+_AGGREGATOR = re.compile(r"news\.google|^$|^nan$", re.I)
+# Greedy head so the split happens at the LAST separator; the publisher segment
+# must be allowed to contain a hyphen itself ("ABS-CBN", "Rappler - Newsbreak").
+_PUB_SUFFIX = re.compile(r"^(.*\S)\s+[-–—]\s+(\S.{2,44})\s*$")
+_SOURCE_CANON = {
+    "inquirer.net": "inquirer.net", "newsinfo.inquirer.net": "inquirer.net",
+    "business.inquirer.net": "inquirer.net", "lifestyle.inq": "inquirer.net",
+    "opinion.inquirer.net": "inquirer.net", "cebudailynews.inquirer.net": "inquirer.net",
+    "philstar.com": "philstar.com", "interaksyon.philstar.com": "philstar.com",
+    "qa.philstar.com": "philstar.com",
+    "gma network": "gmanetwork.com", "gmanetwork.com": "gmanetwork.com",
+    "gma news online": "gmanetwork.com",
+    "manila bulletin": "mb.com.ph", "mb.com.ph": "mb.com.ph",
+    "the manila times": "manilatimes.net", "manilatimes.net": "manilatimes.net",
+    "rappler": "rappler.com", "rappler.com": "rappler.com",
+    "abs-cbn news": "abs-cbn.com", "news.abs-cbn.com": "abs-cbn.com",
+    "abs-cbn.com": "abs-cbn.com",
+    "businessworld online": "bworldonline.com", "bworldonline.com": "bworldonline.com",
+    "businessmirror": "businessmirror.com.ph",
+    "philippine news agency": "pna.gov.ph", "pna.gov.ph": "pna.gov.ph",
+    "philippine information agency": "pia.gov.ph", "pia.gov.ph": "pia.gov.ph",
+    "sunstar publishing inc.": "sunstar.com.ph", "sunstar.com.ph": "sunstar.com.ph",
+    "the philippine star": "philstar.com", "daily tribune": "tribune.net.ph",
+    "manila standard": "manilastandard.net", "journal online": "journal.com.ph",
+    "journal news online": "journal.com.ph", "ptv news": "ptvnews.ph",
+    "bulatlat": "bulatlat.com", "philippine daily inquirer": "inquirer.net",
+}
+
+
+def _resolve_source(source: str, title: str) -> tuple[str, str]:
+    """(publisher, cleaned_title). Recovers the real publisher for aggregator rows."""
+    src, ttl = str(source or "").strip(), str(title or "")
+    if _AGGREGATOR.search(src):
+        m = _PUB_SUFFIX.match(ttl)
+        if m:
+            ttl, src = m.group(1).strip(), m.group(2).strip()
+    key = src.lower().lstrip("www.")
+    return _SOURCE_CANON.get(key, key or "unknown"), ttl
+
+
 def _matched_topics(text: str) -> list[str]:
     return [name for name, pat in TOPIC_PATTERNS.items() if pat.search(text)]
 
@@ -381,6 +427,46 @@ def _load_union() -> pd.DataFrame:
     return both
 
 
+AUDIT_DIR = OUTDIR / "audit_review"
+PRE_AUDIT = AUDIT_DIR / "dataset_pre_audit.csv"
+AUDIT_STAGES = ("audit_stage1_repair.py", "audit_stage2_rebuild.py",
+                "audit_stage3_validate.py")
+
+
+def _publish_through_audit(pool: pd.DataFrame) -> None:
+    """Hand the assembled pool to the audit pipeline, which publishes the dataset.
+
+    The pool is merged into the pinned pre-audit snapshot rather than replacing
+    it, so article_ids that have already been reviewed keep their verdicts and
+    only genuinely new rows show up as awaiting review. Then stages 1-3 run:
+    structural repair, the manual relevance review, and validation.
+    """
+    import subprocess
+    import sys as _sys
+
+    AUDIT_DIR.mkdir(parents=True, exist_ok=True)
+    if PRE_AUDIT.exists():
+        prior = pd.read_csv(PRE_AUDIT, encoding="utf-8-sig")
+        fresh = pool.reindex(columns=prior.columns)
+        added = fresh[~fresh["article_id"].isin(set(prior["article_id"]))]
+        snapshot = pd.concat([prior, added], ignore_index=True)
+        print(f"pre-audit snapshot: {len(prior)} known + {len(added)} new "
+              f"= {len(snapshot)} rows")
+    else:
+        snapshot = pool
+        print(f"pre-audit snapshot created: {len(snapshot)} rows")
+    _safe_csv(snapshot, PRE_AUDIT)
+
+    here = Path(__file__).resolve().parent
+    for stage in AUDIT_STAGES:
+        print(f"\n--- {stage} ---")
+        r = subprocess.run([_sys.executable, str(here / stage)],
+                           cwd=str(here.parent.parent))
+        if r.returncode != 0:
+            raise SystemExit(f"{stage} failed (exit {r.returncode}); "
+                             "the published dataset was NOT updated")
+
+
 def build() -> None:
     from app.ml.corpus.location_geocoder import geocode_location
 
@@ -478,6 +564,16 @@ def build() -> None:
     print(f"\ngated: {n_before} -> {len(out)} rows "
           f"(dropped {len(dropped)}: {dropped['drop_reason'].value_counts().to_dict()})")
 
+    # Resolve the real publisher for aggregator-harvested rows and strip the
+    # " - Publisher" suffix from the headline. Done BEFORE syndication dedup so
+    # the cleaned titles let the dedup see genuine reprints of the same story.
+    _res = [_resolve_source(s, t) for s, t in zip(out["news_source"], out["title"])]
+    n_fixed = sum(1 for (s, _), old in zip(_res, out["news_source"])
+                  if s != str(old or "").lower().lstrip("www."))
+    out["news_source"] = [s for s, _ in _res]
+    out["title"] = [t for _, t in _res]
+    print(f"resolved publisher for {n_fixed} aggregator/unnormalised rows")
+
     # Syndication dedup across the union: same story republished under a near-
     # identical title (different URL/id). Keep the strict-reanalysis copy first.
     out["_nt"] = out["title"].fillna("").str.lower().str.replace(r"[^a-z0-9 ]", "", regex=True).str.strip()
@@ -504,19 +600,15 @@ def build() -> None:
     dropped = dropped.drop(columns=_sc, errors="ignore")
     out = out.sort_values(["province", "city_municipality", "publication_date"], na_position="last")
     OUTDIR.mkdir(parents=True, exist_ok=True)
-    out.to_parquet(OUTDIR / "calabarzon_food_insecurity_dataset.parquet", index=False)
-    _safe_csv(out, OUTDIR / "calabarzon_food_insecurity_dataset.csv")
-    _safe_csv(dropped.sort_values("drop_reason"),
-              OUTDIR / "calabarzon_dataset_dropped_audit.csv")
-    print(f"final dataset: {len(out)} rows -> calabarzon_food_insecurity_dataset.(parquet|csv)"
+    print(f"assembled pool: {len(out)} rows"
           f" | climate-shock rows: {n_clim} | economic-shock rows: {n_econ}"
           f" | poverty-shock rows: {n_pov}")
     print("province:", out["province"].value_counts(dropna=False).to_dict())
-    print("distinct city/municipality:", out["city_municipality"].nunique(),
-          "| hypothesis-mapped rows:", int((out["hypothesis_topics"].fillna("")!="").sum()))
 
-    _coverage_matrix(out)
-    _readme(out, dropped)
+    # This script assembles the candidate pool; it does not publish the dataset.
+    # The published dataset is the audited one, so the pool is handed to the audit
+    # pipeline, which applies the manual relevance review and writes the outputs.
+    _publish_through_audit(out)
 
 
 def _clean(out: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame]:
