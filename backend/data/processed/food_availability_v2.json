@@ -1,0 +1,44 @@
+{
+  "v1 baseline (ens + thr)": {
+    "accuracy": 0.74960434181068,
+    "f1": 0.7314264828908847,
+    "roc_auc": 0.7720017752649496,
+    "seasonal_persistence": 0.7329278992153705,
+    "folds": 8
+  },
+  "+ commodity target encoding": {
+    "accuracy": 0.7476159721165,
+    "f1": 0.7345425760158297,
+    "roc_auc": 0.7648419646662775,
+    "seasonal_persistence": 0.7329278992153705,
+    "folds": 8
+  },
+  "+ regression head": {
+    "accuracy": 0.7447395912052397,
+    "f1": 0.7293981844647047,
+    "roc_auc": 0.7639733086361518,
+    "seasonal_persistence": 0.7329278992153705,
+    "folds": 8
+  },
+  "+ recency weighting": {
+    "accuracy": 0.7470685980263589,
+    "f1": 0.7319534196032678,
+    "roc_auc": 0.7618911232397436,
+    "seasonal_persistence": 0.7329278992153705,
+    "folds": 8
+  },
+  "regression head only": {
+    "accuracy": 0.6836840071605268,
+    "f1": 0.5622165316907937,
+    "roc_auc": 0.5856849797799699,
+    "seasonal_persistence": 0.7329278992153705,
+    "folds": 8
+  },
+  "per-group models": {
+    "accuracy": 0.7542759513180659,
+    "f1": 0.7439184214217806,
+    "roc_auc": 0.7610164920257904,
+    "seasonal_persistence": 0.7329278992153705,
+    "folds": 8
+  }
+}

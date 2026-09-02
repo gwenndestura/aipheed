@@ -1,0 +1,162 @@
+{
+  "persistence only": {
+    "folds": 8,
+    "test_rows": 2428,
+    "n_features": 2,
+    "accuracy": 0.5724386865549269,
+    "f1": 0.5888615836585498,
+    "roc_auc": 0.6122602362367932,
+    "persistence": 0.6314040557667857,
+    "seasonal_persistence": 0.7329278992153705
+  },
+  "series history only": {
+    "folds": 8,
+    "test_rows": 2428,
+    "n_features": 5,
+    "accuracy": 0.5875764137164746,
+    "f1": 0.6031864723178939,
+    "roc_auc": 0.644014202231937,
+    "persistence": 0.6314040557667857,
+    "seasonal_persistence": 0.7329278992153705
+  },
+  "government only": {
+    "folds": 8,
+    "test_rows": 2428,
+    "n_features": 14,
+    "accuracy": 0.552329296868432,
+    "f1": 0.5483744962224215,
+    "roc_auc": 0.5663516567770837,
+    "persistence": 0.6314040557667857,
+    "seasonal_persistence": 0.7329278992153705
+  },
+  "NLP only": {
+    "folds": 8,
+    "test_rows": 2428,
+    "n_features": 5,
+    "accuracy": 0.5981565766695951,
+    "f1": 0.589266644921887,
+    "roc_auc": 0.5126522300262405,
+    "persistence": 0.6314040557667857,
+    "seasonal_persistence": 0.7329278992153705
+  },
+  "government + NLP": {
+    "folds": 8,
+    "test_rows": 2428,
+    "n_features": 19,
+    "accuracy": 0.5630068648267266,
+    "f1": 0.5383716844613857,
+    "roc_auc": 0.57965123116188,
+    "persistence": 0.6314040557667857,
+    "seasonal_persistence": 0.7329278992153705
+  },
+  "series + government": {
+    "folds": 8,
+    "test_rows": 2428,
+    "n_features": 19,
+    "accuracy": 0.636031225283077,
+    "f1": 0.640481567544881,
+    "roc_auc": 0.6466909178105469,
+    "persistence": 0.6314040557667857,
+    "seasonal_persistence": 0.7329278992153705
+  },
+  "series + government + NLP": {
+    "folds": 8,
+    "test_rows": 2428,
+    "n_features": 24,
+    "accuracy": 0.6237682121701646,
+    "f1": 0.6282121844963319,
+    "roc_auc": 0.6446341487158009,
+    "persistence": 0.6314040557667857,
+    "seasonal_persistence": 0.7329278992153705
+  },
+  "matched news only": {
+    "folds": 8,
+    "test_rows": 2428,
+    "n_features": 3,
+    "accuracy": 0.38161362011960087,
+    "f1": 0.2844776332972163,
+    "roc_auc": 0.4717193791904924,
+    "persistence": 0.6314040557667857,
+    "seasonal_persistence": 0.7329278992153705
+  },
+  "series + matched news": {
+    "folds": 8,
+    "test_rows": 2428,
+    "n_features": 8,
+    "accuracy": 0.5890032937840806,
+    "f1": 0.6036490406541983,
+    "roc_auc": 0.6387189378320844,
+    "persistence": 0.6314040557667857,
+    "seasonal_persistence": 0.7329278992153705
+  },
+  "series + gov + NLP + matched": {
+    "folds": 8,
+    "test_rows": 2428,
+    "n_features": 27,
+    "accuracy": 0.6309196173078591,
+    "f1": 0.6332524041275871,
+    "roc_auc": 0.6439439721783933,
+    "persistence": 0.6314040557667857,
+    "seasonal_persistence": 0.7329278992153705
+  },
+  "seasonal only": {
+    "folds": 8,
+    "test_rows": 2428,
+    "n_features": 5,
+    "accuracy": 0.6919327509406932,
+    "f1": 0.7008123202107388,
+    "roc_auc": 0.7564035716440624,
+    "persistence": 0.6314040557667857,
+    "seasonal_persistence": 0.7329278992153705
+  },
+  "series + seasonal": {
+    "folds": 8,
+    "test_rows": 2428,
+    "n_features": 10,
+    "accuracy": 0.6994284674021828,
+    "f1": 0.7077372681522536,
+    "roc_auc": 0.7623299098568299,
+    "persistence": 0.6314040557667857,
+    "seasonal_persistence": 0.7329278992153705
+  },
+  "series + seasonal + matched": {
+    "folds": 8,
+    "test_rows": 2428,
+    "n_features": 13,
+    "accuracy": 0.6877533308904977,
+    "f1": 0.6962458415206666,
+    "roc_auc": 0.7598498971172574,
+    "persistence": 0.6314040557667857,
+    "seasonal_persistence": 0.7329278992153705
+  },
+  "ALL (series+seasonal+gov+NLP+matched)": {
+    "folds": 8,
+    "test_rows": 2428,
+    "n_features": 32,
+    "accuracy": 0.7263796108268138,
+    "f1": 0.7296604340735233,
+    "roc_auc": 0.7609476216541262,
+    "persistence": 0.6314040557667857,
+    "seasonal_persistence": 0.7329278992153705
+  },
+  "series + seasonal + deep": {
+    "folds": 8,
+    "test_rows": 2428,
+    "n_features": 16,
+    "accuracy": 0.7082460426235018,
+    "f1": 0.7149706945979708,
+    "roc_auc": 0.7567019059501163,
+    "persistence": 0.6314040557667857,
+    "seasonal_persistence": 0.7329278992153705
+  },
+  "EVERYTHING": {
+    "folds": 8,
+    "test_rows": 2428,
+    "n_features": 38,
+    "accuracy": 0.712585332421099,
+    "f1": 0.7181054425908099,
+    "roc_auc": 0.7562305265629232,
+    "persistence": 0.6314040557667857,
+    "seasonal_persistence": 0.7329278992153705
+  }
+}

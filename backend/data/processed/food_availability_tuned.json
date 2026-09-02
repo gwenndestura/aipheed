@@ -1,0 +1,76 @@
+{
+  "series + seasonal": {
+    "best_params": {
+      "n_estimators": 210,
+      "learning_rate": 0.01819472478737714,
+      "num_leaves": 35,
+      "max_depth": 2,
+      "min_child_samples": 48,
+      "subsample": 0.7264420617031158,
+      "colsample_bytree": 0.7088041173943704,
+      "reg_alpha": 0.8504466105563974,
+      "reg_lambda": 0.016882063913347605
+    },
+    "tuned_on_search_folds": {
+      "accuracy": 0.7003696846581328,
+      "f1": 0.7086742740167596,
+      "roc_auc": 0.7543187167133781,
+      "persistence": 0.6208795729408869,
+      "seasonal_persistence": 0.7122506398140422,
+      "n_folds": 6
+    },
+    "held_out": {
+      "accuracy": 0.7362903225806452,
+      "f1": 0.747049175235613,
+      "roc_auc": 0.8506698463554667,
+      "persistence": 0.6629775042444821,
+      "seasonal_persistence": 0.7949596774193548,
+      "n_folds": 2
+    },
+    "all_folds": {
+      "accuracy": 0.7093498441387609,
+      "f1": 0.7182679993214729,
+      "roc_auc": 0.7784064991239004,
+      "persistence": 0.6314040557667857,
+      "seasonal_persistence": 0.7329278992153705,
+      "n_folds": 8
+    }
+  },
+  "ALL (series+seasonal+gov+NLP+matched)": {
+    "best_params": {
+      "n_estimators": 328,
+      "learning_rate": 0.04777069962259403,
+      "num_leaves": 38,
+      "max_depth": 4,
+      "min_child_samples": 42,
+      "subsample": 0.9482069256213719,
+      "colsample_bytree": 0.7982893922335097,
+      "reg_alpha": 0.0014582880362240798,
+      "reg_lambda": 0.995477896578695
+    },
+    "tuned_on_search_folds": {
+      "accuracy": 0.7182318284337788,
+      "f1": 0.7215738221985789,
+      "roc_auc": 0.7428648371156812,
+      "persistence": 0.6208795729408869,
+      "seasonal_persistence": 0.7122506398140422,
+      "n_folds": 6
+    },
+    "held_out": {
+      "accuracy": 0.7868951612903226,
+      "f1": 0.7924860019239564,
+      "roc_auc": 0.8455217082757314,
+      "persistence": 0.6629775042444821,
+      "seasonal_persistence": 0.7949596774193548,
+      "n_folds": 2
+    },
+    "all_folds": {
+      "accuracy": 0.7353976616479148,
+      "f1": 0.7393018671299233,
+      "roc_auc": 0.7685290549056938,
+      "persistence": 0.6314040557667857,
+      "seasonal_persistence": 0.7329278992153705,
+      "n_folds": 8
+    }
+  }
+}
