@@ -2,6 +2,18 @@
 @tailwind components;
 @tailwind utilities;
 
+/* ------------------------------------------------------------------
+   Square corners site-wide (formal / government styling).
+   Every Tailwind rounded-* utility is flattened to 0, including
+   directional (rounded-t-*, rounded-tl-*) and arbitrary values
+   (rounded-[10px]). Genuinely circular elements (rounded-full:
+   avatars, toggles, radios, status dots, pills) are preserved.
+   ------------------------------------------------------------------ */
+[class~="rounded"],
+[class*="rounded-"]:not([class*="rounded-full"]) {
+  border-radius: 0 !important;
+}
+
 @layer base {
   :root {
     /* Dark theme — #0D0D0F background, #161618 surface */
@@ -33,7 +45,7 @@
     --border-opacity: 0.06;
     --input: 240 5% 14%;
     --ring: 35 91% 55%;
-    --radius: 0.6rem;
+    --radius: 0rem;
 
     /* Risk palette */
     --risk-low: 45 93% 55%;         /* yellow */
@@ -244,6 +256,18 @@
 .leaflet-container *:focus,
 .leaflet-container *:focus-visible { outline: none !important; outline-offset: 0 !important; }
 .leaflet-container path.leaflet-interactive { outline: none; }
+
+/* Square corners for Leaflet controls, popups and tooltips */
+.leaflet-bar,
+.leaflet-bar a,
+.leaflet-bar a:first-child,
+.leaflet-bar a:last-child,
+.leaflet-control-zoom,
+.leaflet-control-layers,
+.leaflet-control-attribution,
+.leaflet-popup-content-wrapper,
+.leaflet-popup-tip,
+.leaflet-tooltip { border-radius: 0 !important; }
 
 @keyframes rfii-gauge-pulse {
   0%, 100% { opacity: 0.45; }

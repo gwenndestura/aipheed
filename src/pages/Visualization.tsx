@@ -358,7 +358,7 @@ function TrendView() {
               <Tooltip
                 contentStyle={{
                   fontSize: 11,
-                  borderRadius: 8,
+                  borderRadius: 0,
                   background: "hsl(var(--card))",
                   border: "1px solid hsl(var(--border))",
                 }}
@@ -530,7 +530,7 @@ function ShapView() {
                 <Tooltip
                   contentStyle={{
                     fontSize: 11,
-                    borderRadius: 8,
+                    borderRadius: 0,
                     background: "hsl(var(--card))",
                     border: "1px solid hsl(var(--border))",
                   }}
@@ -542,7 +542,7 @@ function ShapView() {
                   strokeDasharray="4 4"
                   label={{ value: `${TRIGGER_RED_CUTOFF}% even share`, position: "top", fontSize: 8.5, fill: "hsl(var(--risk-high))" }}
                 />
-                <Bar dataKey="pct" radius={[3, 3, 3, 3]}>
+                <Bar dataKey="pct" radius={[0, 0, 0, 0]}>
                   {data.map((d, i) => (
                     <Cell key={i} fill={d.color} />
                   ))}

@@ -696,8 +696,8 @@ function ReviewDetailModal({
               <BarChart data={[...shapData].sort((a, b) => b.value - a.value)} layout="vertical" margin={{ left: 8, right: 16, top: 4, bottom: 4 }}>
                 <XAxis type="number" tick={{ fontSize: 10, fill: "hsl(var(--muted-foreground))" }} axisLine={false} tickLine={false} domain={[-0.25, 0.25]} />
                 <YAxis type="category" dataKey="feature" width={130} tick={{ fontSize: 10, fill: "hsl(var(--muted-foreground))" }} axisLine={false} tickLine={false} />
-                <Tooltip contentStyle={{ fontSize: 11, borderRadius: 8, background: "hsl(var(--card))", border: "1px solid hsl(var(--border))" }} formatter={(v: number) => v.toFixed(3)} />
-                <Bar dataKey="value" radius={[4, 4, 4, 4]}>
+                <Tooltip contentStyle={{ fontSize: 11, borderRadius: 0, background: "hsl(var(--card))", border: "1px solid hsl(var(--border))" }} formatter={(v: number) => v.toFixed(3)} />
+                <Bar dataKey="value" radius={[0, 0, 0, 0]}>
                   {shapData.map((s, i) => (
                     <Cell key={i} fill={s.value >= 0 ? "hsl(var(--risk-high))" : "hsl(var(--risk-low))"} />
                   ))}
