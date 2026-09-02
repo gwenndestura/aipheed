@@ -71,6 +71,25 @@ def best_params() -> dict:
                 class_weight="balanced", **p)
 
 
+def build_members(params: dict) -> list[tuple[str, object]]:
+    """
+    The four ensemble members, defined once so training and serving cannot drift.
+    "rf"/"et" are marked because they need NaN filled before fit/predict.
+    """
+    return [
+        ("lgbm", LGBMClassifier(**params)),
+        ("rf", RandomForestClassifier(n_estimators=400, max_depth=10,
+                                      min_samples_leaf=5, class_weight="balanced",
+                                      random_state=42, n_jobs=-1)),
+        ("et", ExtraTreesClassifier(n_estimators=400, max_depth=12,
+                                    min_samples_leaf=4, class_weight="balanced",
+                                    random_state=42, n_jobs=-1)),
+        ("lr", make_pipeline(SimpleImputer(strategy="median"), StandardScaler(),
+                             LogisticRegression(max_iter=2000,
+                                                class_weight="balanced"))),
+    ]
+
+
 def target_encode(tr: pd.DataFrame, te: pd.DataFrame, col: str) -> tuple[pd.Series, pd.Series]:
     """Smoothed mean-encode `col` by historical shock rate, fit on train only."""
     prior = tr["label_shock"].mean()
@@ -116,19 +135,7 @@ def fit_predict(tr: pd.DataFrame, te: pd.DataFrame, cols: list[str],
         probs_te.append(norm.cdf((SHOCK_THRESHOLD - r.predict(Xte)) / sd))
 
     if "clf" in variant or "ens" in variant:
-        members = [("lgbm", LGBMClassifier(**params))]
-        if "ens" in variant:
-            members += [
-                ("rf", RandomForestClassifier(n_estimators=400, max_depth=10,
-                                              min_samples_leaf=5, class_weight="balanced",
-                                              random_state=42, n_jobs=-1)),
-                ("et", ExtraTreesClassifier(n_estimators=400, max_depth=12,
-                                            min_samples_leaf=4, class_weight="balanced",
-                                            random_state=42, n_jobs=-1)),
-                ("lr", make_pipeline(SimpleImputer(strategy="median"), StandardScaler(),
-                                     LogisticRegression(max_iter=2000,
-                                                        class_weight="balanced"))),
-            ]
+        members = build_members(params) if "ens" in variant             else [("lgbm", LGBMClassifier(**params))]
         for name, m in members:
             A = Xtr.fillna(-999) if name in ("rf", "et") else Xtr
             B = Xte.fillna(-999) if name in ("rf", "et") else Xte

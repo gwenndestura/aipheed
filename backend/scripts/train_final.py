@@ -47,6 +47,7 @@ import sys
 import warnings
 from pathlib import Path
 
+import joblib
 import numpy as np
 import pandas as pd
 from sklearn.metrics import accuracy_score, f1_score, roc_auc_score
@@ -58,7 +59,8 @@ from scripts.train_food_availability import (  # noqa: E402
     GOV, MATCHED, NLP, SEASONAL, SERIES, load,
 )
 from scripts.train_food_availability_v2 import (  # noqa: E402
-    MIN_TRAIN, best_params, fit_predict, pick_threshold, target_encode,
+    MIN_TRAIN, best_params, build_members, fit_predict, pick_threshold,
+    target_encode,
 )
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
@@ -81,6 +83,57 @@ VARIANT = "ens_tenc"
 # abstention raises accuracy AND skill: +0.0826 at full coverage, +0.0891 at 90%.
 MATURITY_FOLDS = 4        # folds discarded as cold-start
 COVERAGE = 0.90           # fraction of cases the model answers
+
+
+BUNDLE = Path("models/food_availability_model.joblib")
+
+
+def persist_deployable(df: pd.DataFrame, cols: list[str], params: dict) -> None:
+    """
+    Fit once on ALL available data and save a servable bundle.
+
+    The walk-forward loop above refits per fold, which is right for measuring
+    performance but leaves nothing to serve from. This fits the same
+    configuration on the full panel and stores everything a caller needs to
+    score a new quarter: the per-group ensembles, the commodity target-encoding
+    map, the per-group decision thresholds and the feature order.
+
+    The reported metrics come from the walk-forward evaluation, NOT from this
+    fit -- scoring the rows it was trained on would be meaningless.
+    """
+    from scripts.train_food_availability_v2 import SMOOTHING
+    prior = df["label_shock"].mean()
+    stats = df.groupby("commodity")["label_shock"].agg(["sum", "count"])
+    encoding = ((stats["sum"] + SMOOTHING * prior) / (stats["count"] + SMOOTHING)).to_dict()
+
+    fitted = df.copy()
+    fitted["commodity_te"] = fitted["commodity"].map(encoding).fillna(prior)
+    use = cols + ["commodity_te"]
+
+    groups: dict[str, dict] = {}
+    for grp, sub in fitted.groupby("group"):
+        train = sub if (len(sub) >= 50 and sub["label_shock"].nunique() > 1) else fitted
+        members = build_members(params)
+        for name, m in members:
+            X = train[use].fillna(-999) if name in ("rf", "et") else train[use]
+            m.fit(X, train["label_shock"])
+        p_tr = np.mean([
+            m.predict_proba(train[use].fillna(-999) if n in ("rf", "et") else train[use])[:, 1]
+            for n, m in members], axis=0)
+        groups[grp] = {"members": members,
+                       "threshold": pick_threshold(train["label_shock"], p_tr)}
+        log.info("fitted %-22s n=%5d threshold=%.3f", grp, len(train),
+                 groups[grp]["threshold"])
+
+    BUNDLE.parent.mkdir(parents=True, exist_ok=True)
+    joblib.dump({"groups": groups, "feature_cols": use,
+                 "commodity_encoding": encoding, "encoding_prior": float(prior),
+                 "trained_through": max(df["quarter"]),
+                 "n_train_rows": len(fitted),
+                 "note": ("Fitted on the full panel for serving. Performance figures "
+                          "come from the walk-forward evaluation in final_results.json, "
+                          "not from this fit.")}, BUNDLE)
+    log.info("deployable bundle -> %s", BUNDLE)
 
 
 def main() -> None:
@@ -106,9 +159,8 @@ def main() -> None:
             sub = tr[tr["group"] == grp]
             if len(sub) < 50 or sub["label_shock"].nunique() < 2:
                 sub = tr                      # fall back to pooled for thin groups
-            p_tr_g, p_g = fit_predict(sub, sub, use, VARIANT, params) if False else                           (None, None)
-            # Fit once on the group, score both its own training rows (for the
-            # threshold) and the test rows.
+            # Fit on the group, score its own training rows (for the threshold)
+            # and the test rows.
             p_tr_g, _ = fit_predict(sub, sub.head(1), use, VARIANT, params)
             _, p_g = fit_predict(sub, te[mask], use, VARIANT, params)
             prob[mask] = p_g
@@ -204,6 +256,8 @@ def main() -> None:
         "by_group": by_group, "by_province": by_prov}, indent=2, default=float))
     preds.to_parquet("data/processed/final_predictions.parquet", index=False)
     log.info("saved -> %s and data/processed/final_predictions.parquet", OUT)
+
+    persist_deployable(df, cols, params)
 
 
 if __name__ == "__main__":

@@ -3,13 +3,31 @@ app/ml/inference/predictor.py
 ------------------------------
 Province-level food insecurity forecast predictor.
 
-Loads the trained LightGBM model (models/lgbm_best.pkl) and produces
-province-level forecast for a given quarter's feature row.
+Serves the food-availability shock model: for a given quarter, scores every
+province-commodity series and rolls the results up to a province-level risk.
+
+The target changed on 2026-09-01. The former model predicted a composite
+SWS + food-CPI stress label at province-quarter resolution; that label was
+withdrawn once its inputs were found to be fabricated and its only province-
+varying term traced to a leaking feature. The current model predicts a
+production shortfall against a series' own seasonal baseline, at province x
+quarter x COMMODITY resolution, from PSA OpenStat volumes.
+
+A province therefore no longer has one prediction but many -- one per commodity
+series it grows or fishes. `risk_probability` is the share of that province's
+series flagged as at risk, which is both interpretable for DSWD ("a third of
+Quezon's monitored commodities are at risk this quarter") and usable for the
+existing sudden-rise alert logic unchanged.
+
+Loads models/food_availability_model.joblib, written by scripts/train_final.py.
+That bundle carries the per-group ensembles, the commodity target-encoding map
+and the per-group decision thresholds, so serving cannot drift from training.
 
 Usage:
     from app.ml.inference.predictor import Predictor
     predictor = Predictor()
-    forecasts = predictor.forecast_quarter("2026-Q1")
+    forecasts = predictor.forecast_quarter("2026-Q1")          # by province
+    detail    = predictor.forecast_commodities("2026-Q1")      # by series
 """
 
 from __future__ import annotations
@@ -28,7 +46,8 @@ logger = logging.getLogger(__name__)
 # Constants
 # ---------------------------------------------------------------------------
 
-MODEL_PATH    = Path("models/lgbm_best.pkl")
+MODEL_PATH    = Path("models/food_availability_model.joblib")
+PANEL_PATH    = Path("data/processed/food_availability_panel.parquet")
 FEATURES_PATH = Path("data/processed/features_fused.parquet")
 BIAS_WEIGHTS_PATH = Path("data/processed/bias_weights.parquet")
 
@@ -40,29 +59,9 @@ PROVINCE_NAMES: dict[str, str] = {
     "PH040500000": "Batangas",
 }
 
-# Must match trainer.py FEATURE_COLS exactly
-FEATURE_COLS = [
-    "FSSI", "FSSI_lag1", "FSSI_lag2", "FSSI_accel",
-    "trigger_market", "trigger_climate", "trigger_employment",
-    "trigger_ofw_remittance", "trigger_fish_kill",
-    "food_cpi", "food_cpi_yoy", "rice_price_regular",
-    "unemployment_rate", "poverty_incidence",
-    "food_minus_headline_yoy", "headline_cpi",
-    "ofw_remit_yoy_pct", "fx_usd_php_avg",
-    "diesel_php_per_l", "gasoline_php_per_l", "brent_usd_per_bbl",
-    "tc_count", "tc_severe_flag", "rainfall_anomaly_pct",
-    "drought_alert", "enso_numeric",
-    "commodity_fruit_veg", "commodity_leafy_veg",
-    "commodity_livestock", "commodity_poultry", "commodity_rootcrops",
-    "food_cpi_yoy_lag1",         "food_cpi_yoy_accel",
-    "food_minus_headline_yoy_lag1", "food_minus_headline_yoy_accel",
-    "unemployment_rate_lag1",    "unemployment_rate_accel",
-    "ofw_remit_yoy_pct_lag1",    "ofw_remit_yoy_pct_accel",
-    "rainfall_anomaly_pct_lag1", "rainfall_anomaly_pct_accel",
-    "rice_price_regular_lag1",   "rice_price_regular_accel",
-    "diesel_php_per_l_lag1",     "diesel_php_per_l_accel",
-]
-
+# The feature list travels inside the bundle rather than being imported, so
+# serving cannot drift from training. It previously imported trainer.FEATURE_COLS
+# and drifted anyway when the trainer changed underneath it.
 DATA_SUFFICIENCY_MIN_ARTICLES = 5
 
 # ---------------------------------------------------------------------------
@@ -95,6 +94,7 @@ class Predictor:
     _instance: Predictor | None = None
     _model = None
     _features: pd.DataFrame | None = None
+    _panel: pd.DataFrame | None = None
     _bias_weights: pd.DataFrame | None = None
 
     def __new__(cls) -> Predictor:
@@ -103,24 +103,91 @@ class Predictor:
         return cls._instance
 
     def load(self) -> None:
-        """Load model and feature matrix into memory (idempotent)."""
+        """Load the model bundle and scored panel into memory (idempotent)."""
         if self._model is None:
             if not MODEL_PATH.exists():
                 raise FileNotFoundError(
                     f"Trained model not found at {MODEL_PATH}. "
-                    "Run scripts/run_w12_training.py first."
+                    "Run scripts/train_final.py first."
                 )
             self._model = joblib.load(MODEL_PATH)
-            logger.info("Predictor: LightGBM model loaded from %s", MODEL_PATH)
-
-        if self._features is None and FEATURES_PATH.exists():
-            self._features = pd.read_parquet(FEATURES_PATH)
             logger.info(
-                "Predictor: feature matrix loaded (%d rows)", len(self._features)
+                "Predictor: bundle loaded from %s (%d groups, trained through %s)",
+                MODEL_PATH, len(self._model["groups"]),
+                self._model.get("trained_through", "?"),
             )
+
+        if self._panel is None and PANEL_PATH.exists():
+            self._panel = self._prepare_panel()
+            logger.info("Predictor: panel prepared (%d series-quarters)", len(self._panel))
 
         if self._bias_weights is None and BIAS_WEIGHTS_PATH.exists():
             self._bias_weights = pd.read_parquet(BIAS_WEIGHTS_PATH)
+
+    def _prepare_panel(self) -> pd.DataFrame:
+        """
+        Rebuild the exact feature frame training used.
+
+        Delegates to the training loader so the two cannot diverge: it derives
+        the same series lags, seasonal terms and commodity-matched news counts,
+        then joins the government feature matrix.
+        """
+        from scripts.train_food_availability import load as load_panel
+
+        df = load_panel()
+        enc = self._model["commodity_encoding"]
+        prior = self._model["encoding_prior"]
+        df["commodity_te"] = df["commodity"].map(enc).fillna(prior)
+        return df
+
+    def _score(self, rows: pd.DataFrame) -> tuple[np.ndarray, np.ndarray]:
+        """Ensemble probability and the group's decision threshold for each row."""
+        cols = self._model["feature_cols"]
+        prob = np.zeros(len(rows))
+        thr = np.zeros(len(rows))
+        for grp, spec in self._model["groups"].items():
+            mask = (rows["group"] == grp).to_numpy()
+            if not mask.any():
+                continue
+            sub = rows.loc[mask, cols]
+            member_probs = [
+                m.predict_proba(sub.fillna(-999) if name in ("rf", "et") else sub)[:, 1]
+                for name, m in spec["members"]
+            ]
+            prob[mask] = np.mean(member_probs, axis=0)
+            thr[mask] = spec["threshold"]
+        return prob, thr
+
+    def forecast_commodities(self, quarter: str) -> list[dict]:
+        """
+        Score every province-commodity series for one quarter.
+
+        This is the model's native resolution; forecast_quarter() rolls it up.
+        """
+        self.load()
+        if self._panel is None:
+            raise RuntimeError("Panel not loaded.")
+
+        rows = self._panel[self._panel["quarter"] == quarter]
+        if rows.empty:
+            logger.warning("forecast_commodities: no rows for quarter=%s", quarter)
+            return []
+
+        prob, thr = self._score(rows)
+        out = [
+            {
+                "province_code": r["province_code"],
+                "province_name": PROVINCE_NAMES.get(r["province_code"], r["province_code"]),
+                "quarter": quarter,
+                "commodity_group": r["group"],
+                "commodity": r["commodity"],
+                "shock_probability": round(float(p), 4),
+                "at_risk": bool(p >= t),
+            }
+            for (_, r), p, t in zip(rows.iterrows(), prob, thr)
+        ]
+        out.sort(key=lambda d: d["shock_probability"], reverse=True)
+        return out
 
     def forecast_quarter(self, quarter: str) -> list[dict]:
         """
@@ -139,43 +206,43 @@ class Predictor:
         """
         self.load()
 
-        if self._features is None:
-            raise RuntimeError("Feature matrix not loaded.")
+        if self._panel is None:
+            raise RuntimeError("Panel not loaded.")
 
-        df = self._features[self._features["quarter"] == quarter].copy()
-        if df.empty:
+        rows = self._panel[self._panel["quarter"] == quarter]
+        if rows.empty:
             logger.warning(
-                "forecast_quarter: no feature rows for quarter=%s. "
+                "forecast_quarter: no panel rows for quarter=%s. "
                 "Returning zero-probability forecasts.",
                 quarter,
             )
             return self._zero_forecasts(quarter)
 
-        # Ensure all feature columns exist (fill missing with 0)
-        for col in FEATURE_COLS:
-            if col not in df.columns:
-                df[col] = 0.0
-        df[FEATURE_COLS] = df[FEATURE_COLS].fillna(0.0)
-
-        X = df[FEATURE_COLS]
-        proba = self._model.predict_proba(X)[:, 1]
+        prob, thr = self._score(rows)
+        scored = rows[["province_code", "group", "commodity"]].copy()
+        scored["prob"] = prob
+        scored["at_risk"] = prob >= thr
 
         results = []
-        for i, (_, row) in enumerate(df.iterrows()):
-            province_code = row["province_code"]
-            prob = float(proba[i])
-            # Display label only — alerts use detect_alerts() delta logic, not this
-            risk_label = "HIGH" if prob >= 0.5 else "LOW"
-
-            # Check data sufficiency
+        for province_code, d in scored.groupby("province_code"):
+            # Province risk = share of that province's monitored series flagged.
+            # The model predicts per commodity, so a province has many
+            # predictions rather than one; the share is what a DSWD reader can
+            # act on ("a third of Quezon's monitored commodities are at risk").
+            share = float(d["at_risk"].mean())
             data_flag = self._get_data_sufficiency(province_code, quarter)
+            at_risk = d[d["at_risk"]].nlargest(3, "prob")["commodity"].tolist()
 
             results.append({
                 "province_code":        province_code,
                 "province_name":        PROVINCE_NAMES.get(province_code, province_code),
                 "quarter":              quarter,
-                "risk_probability":     round(prob, 4),
-                "risk_label":           risk_label,
+                "risk_probability":     round(share, 4),
+                "risk_label":           "HIGH" if share >= 0.5 else "LOW",
+                "series_monitored":     int(len(d)),
+                "series_at_risk":       int(d["at_risk"].sum()),
+                "mean_shock_probability": round(float(d["prob"].mean()), 4),
+                "top_at_risk_commodities": at_risk,
                 "data_sufficiency_flag": data_flag,
             })
 
