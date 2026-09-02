@@ -155,8 +155,25 @@ def _load_oil(path: Path) -> pd.DataFrame:
     return df[[c for c in keep if c in df.columns]].copy()
 
 
+MEASURED_RAINFALL_PATH = Path("data/processed/province_rainfall.parquet")
+
+
 def _load_pagasa(path: Path) -> pd.DataFrame:
-    """Load PAGASA climate features: tc_count, rainfall_anomaly, ENSO, drought."""
+    """
+    Load climate features: tc_count, rainfall_anomaly, ENSO, drought.
+
+    rainfall_anomaly_pct is taken from province_rainfall.parquet when present --
+    NASA POWER PRECTOTCORR measured at interior sample points per province,
+    anomaly against the 1991-2020 WMO normal (scripts/build_province_rainfall.py).
+    The PAGASA table supplies it only as a fallback, and there it is a single
+    CALABARZON series inherited to every province: its province split was
+    manufactured as Quezon x a constant and was demoted on 2026-09-01.
+
+    Measured cross-province correlation is 0.938 (Batangas-Rizal 0.875,
+    Laguna-Quezon 0.998) against exactly 1.0000 for the manufactured series --
+    adjacent provinces genuinely share weather systems, but they are no longer
+    identical by construction.
+    """
     df = pd.read_parquet(path)
     keep = [
         "province_code", "quarter",
@@ -167,6 +184,29 @@ def _load_pagasa(path: Path) -> pd.DataFrame:
     if "enso_phase" in out.columns:
         out["enso_numeric"] = out["enso_phase"].map(ENSO_ENCODE).fillna(0).astype(int)
         out = out.drop(columns=["enso_phase"])
+
+    if MEASURED_RAINFALL_PATH.exists():
+        measured = pd.read_parquet(MEASURED_RAINFALL_PATH)[
+            ["province_code", "quarter", "rainfall_anomaly_pct"]
+        ].rename(columns={"rainfall_anomaly_pct": "rainfall_measured"})
+        out = out.merge(measured, on=["province_code", "quarter"], how="left")
+        n_measured = int(out["rainfall_measured"].notna().sum())
+        out["rainfall_anomaly_pct"] = out["rainfall_measured"].fillna(
+            out.get("rainfall_anomaly_pct")
+        )
+        out = out.drop(columns=["rainfall_measured"])
+        logger.info(
+            "_load_pagasa: rainfall_anomaly_pct from NASA POWER for %d of %d "
+            "province-quarters (remainder falls back to the regional series)",
+            n_measured, len(out),
+        )
+    else:
+        logger.warning(
+            "_load_pagasa: %s not found -- rainfall_anomaly_pct falls back to the "
+            "CALABARZON-level series with no province variation. Run "
+            "scripts/build_province_rainfall.py for measured values.",
+            MEASURED_RAINFALL_PATH,
+        )
     return out
 
 
