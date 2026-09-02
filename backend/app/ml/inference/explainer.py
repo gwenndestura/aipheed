@@ -1,11 +1,20 @@
 """
 app/ml/inference/explainer.py
 ------------------------------
-SHAP TreeExplainer for LightGBM province-level forecasts.
+SHAP TreeExplainer for the food-availability shock model.
 
-Computes per-feature SHAP values (probability space) for a specific
-province-quarter, enabling transparent feature importance for DSWD
-decision-makers.
+The target changed on 2026-09-01: the model now predicts a production shortfall
+per province x quarter x COMMODITY, not a composite stress label per province.
+SHAP is therefore computed at the series level and summed to the province, which
+is also what the Risk Drivers panel wants -- "what is driving risk in Quezon
+this quarter" is a sum over that province's commodity series.
+
+The served model is a per-group ENSEMBLE (LightGBM, RandomForest, ExtraTrees,
+LogisticRegression). TreeExplainer cannot explain the logistic pipeline, so
+explanations come from each group's LightGBM member -- the ensemble's primary
+model. Explained probabilities therefore approximate, rather than exactly
+reproduce, the served ensemble probability; the gap is reported as
+`explained_prob_gap` rather than hidden.
 
 Outputs two record types:
 
@@ -40,31 +49,13 @@ from app.ml.inference.feature_display import (
 
 logger = logging.getLogger(__name__)
 
-MODEL_PATH    = Path("models/lgbm_best.pkl")
-FEATURES_PATH = Path("data/processed/features_fused.parquet")
+MODEL_PATH    = Path("models/food_availability_model.joblib")
+PANEL_PATH    = Path("data/processed/food_availability_panel.parquet")
 TRIGGERS_PATH = Path("data/processed/trigger_proportions.parquet")
 
-FEATURE_COLS = [
-    "FSSI", "FSSI_lag1", "FSSI_lag2", "FSSI_accel",
-    "trigger_market", "trigger_climate", "trigger_employment",
-    "trigger_ofw_remittance", "trigger_fish_kill",
-    "food_cpi", "food_cpi_yoy", "rice_price_regular",
-    "unemployment_rate", "poverty_incidence",
-    "food_minus_headline_yoy", "headline_cpi",
-    "ofw_remit_yoy_pct", "fx_usd_php_avg",
-    "diesel_php_per_l", "gasoline_php_per_l", "brent_usd_per_bbl",
-    "tc_count", "tc_severe_flag", "rainfall_anomaly_pct",
-    "drought_alert", "enso_numeric",
-    "commodity_fruit_veg", "commodity_leafy_veg",
-    "commodity_livestock", "commodity_poultry", "commodity_rootcrops",
-    "food_cpi_yoy_lag1",         "food_cpi_yoy_accel",
-    "food_minus_headline_yoy_lag1", "food_minus_headline_yoy_accel",
-    "unemployment_rate_lag1",    "unemployment_rate_accel",
-    "ofw_remit_yoy_pct_lag1",    "ofw_remit_yoy_pct_accel",
-    "rainfall_anomaly_pct_lag1", "rainfall_anomaly_pct_accel",
-    "rice_price_regular_lag1",   "rice_price_regular_accel",
-    "diesel_php_per_l_lag1",     "diesel_php_per_l_accel",
-]
+# The feature list is no longer hardcoded here. It travels inside the model
+# bundle (self._feature_cols) so serving, explaining and training cannot
+# drift apart -- this copy had already gone stale against the trainer once.
 
 PROVINCE_NAMES: dict[str, str] = {
     "PH040100000": "Cavite",
@@ -92,46 +83,57 @@ class Explainer:
     _triggers: pd.DataFrame | None = None
     _baseline: float | None = None
 
+    _explainers: dict | None = None
+    _feature_cols: list[str] | None = None
+
     def _load(self) -> None:
         if self._model is not None:
             return
 
         if not MODEL_PATH.exists():
             raise FileNotFoundError(
-                f"Model not found at {MODEL_PATH}. Run training first."
+                f"Model not found at {MODEL_PATH}. Run scripts/train_final.py first."
             )
         self._model = joblib.load(MODEL_PATH)
-        logger.info("Explainer: LightGBM model loaded from %s", MODEL_PATH)
+        self._feature_cols = self._model["feature_cols"]
+        logger.info("Explainer: bundle loaded from %s (%d groups)",
+                    MODEL_PATH, len(self._model["groups"]))
 
-        if FEATURES_PATH.exists():
-            self._features = pd.read_parquet(FEATURES_PATH)
-            logger.info(
-                "Explainer: feature matrix loaded (%d rows)", len(self._features)
-            )
+        # Same panel the predictor scores, built by the training loader so the
+        # two cannot diverge.
+        from scripts.train_food_availability import load as load_panel
+        panel = load_panel()
+        enc = self._model["commodity_encoding"]
+        panel["commodity_te"] = panel["commodity"].map(enc).fillna(
+            self._model["encoding_prior"])
+        self._features = panel
+        logger.info("Explainer: panel loaded (%d series-quarters)", len(panel))
 
         if TRIGGERS_PATH.exists():
             self._triggers = pd.read_parquet(TRIGGERS_PATH)
 
-        # Build interventional SHAP explainer with probability output.
-        # Background dataset: 50-row sample of training features.
+        # One TreeExplainer per commodity group, over that group's LightGBM
+        # member. Background is a sample of that group's own rows so the
+        # baseline reflects the group's base rate -- fisheries shocks ~56% of
+        # quarters against 24-30% for crops, so a pooled baseline would misstate
+        # both.
         import shap
-        if self._features is not None:
-            bg = self._features[FEATURE_COLS].fillna(0.0).sample(
-                min(50, len(self._features)), random_state=42
-            )
-        else:
-            bg = None
+        self._explainers = {}
+        baselines = []
+        for grp, spec in self._model["groups"].items():
+            lgbm = dict(spec["members"])["lgbm"]
+            rows = panel[panel["group"] == grp]
+            if rows.empty:
+                rows = panel
+            bg = rows[self._feature_cols].fillna(0.0).sample(
+                min(50, len(rows)), random_state=42)
+            ex = shap.TreeExplainer(lgbm, bg, model_output="probability",
+                                    feature_perturbation="interventional")
+            self._explainers[grp] = ex
+            baselines.append(float(ex.expected_value))
+            logger.info("Explainer: %-22s baseline=%.4f", grp, float(ex.expected_value))
 
-        self._explainer = shap.TreeExplainer(
-            self._model,
-            bg,
-            model_output="probability",
-            feature_perturbation="interventional",
-        )
-        self._baseline = float(self._explainer.expected_value)
-        logger.info(
-            "Explainer: SHAP explainer ready | baseline=%.4f", self._baseline
-        )
+        self._baseline = float(np.mean(baselines)) if baselines else None
 
     # ── Province-quarter SHAP ─────────────────────────────────────────────
 
@@ -145,12 +147,17 @@ class Explainer:
 
         Returns
         -------
-        list[dict]  — one dict per feature (all 45), sorted by |shap_value|.
+        list[dict]  — one dict per feature, sorted by |shap_value|.
         Each dict contains:
             quarter, province_code,
             feature_name, display_name, feature_group, unit,
             shap_value, mean_abs_shap, feature_value,
             baseline, final_rfii
+
+        SHAP is computed per commodity series and AVERAGED across the province's
+        series, matching how the predictor rolls series risk up to a province.
+        Each series is explained by its own group's explainer, so a fisheries
+        series is read against the fisheries baseline rather than a pooled one.
         """
         self._load()
 
@@ -161,34 +168,43 @@ class Explainer:
             (self._features["province_code"] == province_code)
             & (self._features["quarter"] == quarter)
         )
-        row = self._features[mask]
-        if row.empty:
+        rows = self._features[mask]
+        if rows.empty:
             logger.warning(
                 "explain_province_quarter: no data for %s / %s",
                 province_code, quarter,
             )
             return []
 
-        for col in FEATURE_COLS:
-            if col not in row.columns:
-                row = row.copy()
-                row[col] = 0.0
-        X = row[FEATURE_COLS].fillna(0.0)
+        cols = self._feature_cols
+        sv_parts, base_parts = [], []
+        for grp, sub in rows.groupby("group"):
+            ex = self._explainers.get(grp)
+            if ex is None:
+                continue
+            X_g = sub[cols].fillna(0.0)
+            raw = ex.shap_values(X_g)
+            arr = np.asarray(raw[1] if isinstance(raw, list) and len(raw) > 1
+                             else raw[0] if isinstance(raw, list) else raw)
+            if arr.ndim == 3:            # (n, features, classes)
+                arr = arr[:, :, -1]
+            sv_parts.append(np.atleast_2d(arr))
+            base_parts.extend([float(ex.expected_value)] * len(sub))
 
-        sv_raw = self._explainer.shap_values(X)
-        sv = sv_raw[0] if isinstance(sv_raw, list) else sv_raw[0]
-        # sv shape: (1, n_features) → flatten to (n_features,)
-        if sv.ndim == 2:
-            sv = sv[0]
+        if not sv_parts:
+            return []
 
-        baseline    = self._baseline or 0.0
+        sv = np.vstack(sv_parts).mean(axis=0)      # average across the province's series
+        X = rows[cols].fillna(0.0)
+
+        baseline    = float(np.mean(base_parts))
         final_rfii  = round(baseline + float(sv.sum()), 4)
         mean_abs    = round(float(np.abs(sv).mean()), 6)
 
         records = []
-        for feat, val in zip(FEATURE_COLS, sv):
+        for feat, val in zip(cols, sv):
             meta = FEATURE_DISPLAY_MAP.get(feat, {})
-            fval = X[feat].iloc[0] if feat in X.columns else None
+            fval = float(X[feat].mean()) if feat in X.columns else None
             records.append({
                 "quarter":         quarter,
                 "province_code":   province_code,
@@ -224,13 +240,13 @@ class Explainer:
         shap_records: list[dict],
     ) -> dict:
         """
-        Aggregate SHAP records into 5 driver groups for the Risk Drivers panel.
+        Aggregate SHAP records into the driver groups for the Risk Drivers panel.
 
         Parameters
         ----------
         province_code  : str
         quarter        : str
-        shap_records   : output of explain_province_quarter() — all 45 features.
+        shap_records   : output of explain_province_quarter().
 
         Returns
         -------

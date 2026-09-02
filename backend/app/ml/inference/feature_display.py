@@ -263,6 +263,45 @@ FEATURE_DISPLAY_MAP: dict[str, dict[str, str]] = {
     },
 }
 
+
+# ---------------------------------------------------------------------------
+# Food-availability target features (added 2026-09-01)
+# ---------------------------------------------------------------------------
+# The model predicts a production shortfall per province-commodity series, so
+# the series' own history and its position in the annual cycle are first-class
+# drivers. Empirically they are the strongest: the annual cycle alone was worth
+# +0.11 accuracy.
+FEATURE_DISPLAY_MAP.update({
+    "shock_lag1":   {"display_name": "Shortfall last quarter",
+                     "feature_group": "series_history", "unit": "0/1"},
+    "shock_lag2":   {"display_name": "Shortfall two quarters ago",
+                     "feature_group": "series_history", "unit": "0/1"},
+    "dev_lag1":     {"display_name": "Deviation from normal, last quarter",
+                     "feature_group": "series_history", "unit": "%"},
+    "group_code":   {"display_name": "Commodity group",
+                     "feature_group": "series_history", "unit": "code"},
+    "province_idx": {"display_name": "Province",
+                     "feature_group": "series_history", "unit": "code"},
+    "commodity_te": {"display_name": "Commodity historical shortfall rate",
+                     "feature_group": "series_history", "unit": "rate"},
+    "shock_lag4":   {"display_name": "Shortfall same quarter last year",
+                     "feature_group": "seasonal", "unit": "0/1"},
+    "dev_lag4":     {"display_name": "Deviation same quarter last year",
+                     "feature_group": "seasonal", "unit": "%"},
+    "dev_roll4":    {"display_name": "Average deviation, past year",
+                     "feature_group": "seasonal", "unit": "%"},
+    "series_vol":   {"display_name": "Series volatility",
+                     "feature_group": "seasonal", "unit": "%"},
+    "quarter_num":  {"display_name": "Quarter of year",
+                     "feature_group": "seasonal", "unit": "1-4"},
+    "matched_articles": {"display_name": "Matched news articles",
+                         "feature_group": "nlp", "unit": "count"},
+    "matched_lag1":     {"display_name": "Matched articles, last quarter",
+                         "feature_group": "nlp", "unit": "count"},
+    "total_articles":   {"display_name": "All food-insecurity articles",
+                         "feature_group": "nlp", "unit": "count"},
+})
+
 # ---------------------------------------------------------------------------
 # DRIVER_GROUP_FEATURES
 # ---------------------------------------------------------------------------
@@ -308,6 +347,21 @@ DRIVER_GROUP_FEATURES: dict[str, list[str]] = {
     "nlp_sentiment": [
         "FSSI", "FSSI_lag1", "FSSI_lag2", "FSSI_accel",
         "trigger_fish_kill",
+        # Commodity-matched article counts: fishery-loss articles score the
+        # fisheries label, crop-damage articles the crop labels.
+        "matched_articles", "matched_lag1", "total_articles",
+    ],
+    # Added with the food-availability target. The model predicts a production
+    # shortfall per province-commodity series, so the series' own recent
+    # behaviour and its place in the annual cycle are drivers in their own right
+    # -- and empirically the strongest ones. The annual cycle alone was worth
+    # +0.11 accuracy.
+    "series_history": [
+        "shock_lag1", "shock_lag2", "dev_lag1",
+        "group_code", "province_idx", "commodity_te",
+    ],
+    "seasonal": [
+        "shock_lag4", "dev_lag4", "dev_roll4", "series_vol", "quarter_num",
     ],
 }
 
@@ -318,4 +372,6 @@ DRIVER_GROUP_LABELS: dict[str, str] = {
     "employment":    "Employment",
     "macro_ofw":     "OFW Remittance",
     "nlp_sentiment": "Food Stress Signal",
+    "series_history": "Recent History",
+    "seasonal":       "Seasonal Pattern",
 }
