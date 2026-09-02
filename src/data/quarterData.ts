@@ -139,6 +139,134 @@ export function getTriggerComposition(provinceId: string | null): number[] {
   return TRIGGER_CATEGORIES.map((_, i) => arrs.reduce((s, a) => s + a[i], 0) / arrs.length);
 }
 
+/* ═══════════════════════════════════════════════════════════════════════
+   5-TRIGGER BREAKDOWN — single source of truth for:
+     • Left panel  "Why is this Province at Risk?"  (RiskDriversCardBody)
+     • Right panel "…Summary" SHAP explainability card (ShapNarrativeCardBody)
+     • Visualization "SHAP Explainability" chart + its PNG / PDF export
+     • Quarterly PDF report "Why this forecast" section
+   ALL FIVE triggers are fixed basis data and are ALWAYS shown (even at 0%),
+   ranked high → low. Each `pct` is the trigger's share of the risk; the five
+   sum to exactly 100%. Colour: pct > 20% ⇒ red, otherwise yellow. Recomputed
+   per province × per quarter so every quarter's forecast updates automatically.
+   ═══════════════════════════════════════════════════════════════════════ */
+
+export const TRIGGER_KEYS = ["market", "climate", "employment", "ofw", "fishkill"] as const;
+export type TriggerKey = typeof TRIGGER_KEYS[number];
+
+export const TRIGGER_LABELS: Record<TriggerKey, string> = {
+  market: "Market / Prices",
+  climate: "Climate Stress",
+  employment: "Employment",
+  ofw: "OFW Remittance",
+  fishkill: "Fish Kill",
+};
+
+// Red / yellow cutoff — shared everywhere. `pct` is a trigger's share of ALL 5
+// triggers (the five sum to 100%). An even split is 20% each, so a trigger
+// ABOVE 20% is carrying more than its share ⇒ red; at or below 20% ⇒ yellow.
+export const TRIGGER_RED_CUTOFF = 20;
+
+export function triggerColor(pct: number): string {
+  return pct > TRIGGER_RED_CUTOFF
+    ? "hsl(var(--risk-high))"      // red
+    : "hsl(var(--risk-moderate))"; // yellow
+}
+
+// Base composition per province (order = TRIGGER_KEYS, shares sum to ~1.0).
+// Regional (null province) = mean of the five provinces.
+function triggerBase(provinceId: string | null): Record<TriggerKey, number> {
+  const arr = getTriggerComposition(provinceId);
+  const out = {} as Record<TriggerKey, number>;
+  TRIGGER_KEYS.forEach((k, i) => { out[k] = arr[i]; });
+  return out;
+}
+
+// Deterministic, smooth per-quarter drift (±0.06) so each quarter differs
+// without random noise. Keyed on quarter index + trigger index.
+function triggerQuarterDrift(key: TriggerKey, qid: string): number {
+  const qi = Math.max(0, (QUARTER_IDS as readonly string[]).indexOf(qid));
+  const ki = TRIGGER_KEYS.indexOf(key);
+  return Math.sin((qi + 1) * 1.3 + ki * 1.7) * 0.06;
+}
+
+// Largest-remainder rounding so the integer percentages sum to exactly 100.
+function sharesToPct(shares: number[]): number[] {
+  const total = shares.reduce((a, b) => a + b, 0) || 1;
+  const exact = shares.map((s) => (s / total) * 100);
+  const floors = exact.map(Math.floor);
+  const remaining = 100 - floors.reduce((a, b) => a + b, 0);
+  const order = exact
+    .map((v, i) => [v - floors[i], i] as const)
+    .sort((a, b) => b[0] - a[0]);
+  const out = [...floors];
+  for (let j = 0; j < remaining && j < order.length; j++) out[order[j][1]] += 1;
+  return out;
+}
+
+export interface TriggerContribution {
+  key: TriggerKey;
+  label: string;
+  share: number;  // 0..1 — this trigger's slice of ALL 5 (the 5 sum to 1)
+  pct: number;    // integer % — all 5 sum to exactly 100
+  color: string;  // shared colour, from triggerColor(pct)
+}
+
+/**
+ * All 5 triggers for a province (null = CALABARZON regional avg) in a quarter.
+ * Always returns 5 entries (a trigger may be 0%). `pct` is each trigger's share
+ * of the whole; the five sum to 100. Sorted by pct, descending.
+ */
+export function getTriggerBreakdown(
+  provinceId: string | null,
+  qid: string,
+): TriggerContribution[] {
+  const base = triggerBase(provinceId);
+
+  const raw = TRIGGER_KEYS.map((k) => Math.max(0, base[k] + triggerQuarterDrift(k, qid)));
+  const sum = raw.reduce((a, b) => a + b, 0) || 1;
+  const shares = raw.map((x) => x / sum);
+  const pcts = sharesToPct(shares); // integers summing to exactly 100
+
+  return TRIGGER_KEYS.map((k, i) => ({
+    key: k,
+    label: TRIGGER_LABELS[k],
+    share: shares[i],
+    pct: pcts[i],
+    color: triggerColor(pcts[i]),
+  })).sort((a, b) => b.pct - a.pct);
+}
+
+/**
+ * Plain-language "SHAP explainability" paragraph for a trigger breakdown.
+ * Rendered on-screen with the Visualization charts and embedded verbatim in
+ * the PNG / PDF exports and the quarterly PDF report.
+ */
+export function explainTriggerBreakdown(
+  subject: string,
+  quarterLabel: string,
+  items: TriggerContribution[],
+): string {
+  const ranked = [...items].sort((a, b) => b.pct - a.pct);
+  const red = ranked.filter((i) => i.pct > TRIGGER_RED_CUTOFF).map((i) => i.label);
+  const list = ranked.map((i) => `${i.label} ${i.pct}%`).join(", ");
+
+  const sentences: string[] = [];
+  sentences.push(
+    `This SHAP explainability view breaks ${subject}'s ${quarterLabel} food-insecurity risk into all five trigger categories, scaled so the shares add up to 100%.`,
+  );
+  sentences.push(`Ranked contribution this quarter: ${list}.`);
+  sentences.push(
+    red.length
+      ? `${red.join(" and ")} ${red.length > 1 ? "each sit" : "sits"} above the 20% even-share line and ${red.length > 1 ? "are" : "is"} flagged red; the rest are yellow.`
+      : `No trigger crosses the 20% even-share line this quarter, so all are shown yellow.`,
+  );
+  sentences.push(
+    `Shares are AI estimates from news-signal and indicator data, recomputed every quarter - an explanation aid, not an official measurement.`,
+  );
+  return sentences.join(" ");
+}
+
 // Algorithm thresholds (spec rule 4)
 export const RISK_DISPLAY_CUTOFF = 0.5;   // HIGH/LOW pill threshold for forecast display
 export const ALERT_THRESHOLD = 0.6;        // Active alert gating threshold
@@ -225,10 +353,10 @@ export const SAMPLE_ARTICLES: Article[] = [
     url: "https://www.bworldonline.com/top-stories/2024/12/17/641938/remittance-growth-slows-in-october/",
   },
   {
-    title: "DOST Region IV-A adds satellite warehouses to boost disaster response",
+    title: "DA Region IV-A adds satellite warehouses to boost disaster response",
     source: "Philippine News Agency",
     date: "2024-12-13",
-    excerpt: "DOST Region IV-A expands its prepositioning network to deliver food packs faster to disaster- and food-stress-prone LGUs.",
+    excerpt: "DA Region IV-A expands its prepositioning network to deliver food packs faster to disaster- and food-stress-prone LGUs.",
     url: "https://www.pna.gov.ph/articles/1239902",
   },
   {

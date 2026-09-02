@@ -4,9 +4,9 @@ import { Mail, Lock, ArrowRight, ShieldCheck } from "lucide-react";
 import { toast } from "@/hooks/use-toast";
 import logoIcon from "@/assets/logo-icon.png";
 
-const ADMIN_DOMAINS = ["ro4a.dost.gov.ph"];
+const ADMIN_DOMAINS = ["calabarzon.da.gov.ph"];
 
-function isDostAdminEmail(value: string) {
+function isDaAdminEmail(value: string) {
   const email = value.trim().toLowerCase();
   return ADMIN_DOMAINS.some((domain) => email.endsWith(`@${domain}`));
 }
@@ -21,11 +21,11 @@ export default function Login() {
     e.preventDefault();
     setLoading(true);
     setTimeout(() => {
-      if (!isDostAdminEmail(email)) {
+      if (!isDaAdminEmail(email)) {
         setLoading(false);
         sessionStorage.removeItem("aipheed_user");
         toast({
-          title: "DOST admin access only",
+          title: "DA admin access only",
           description: "Public users do not sign in. Use the public map without an account.",
           variant: "destructive",
         });
@@ -38,7 +38,7 @@ export default function Login() {
         JSON.stringify({ email: normalizedEmail, role: "admin" })
       );
       toast({
-        title: "Welcome, DOST Administrator",
+        title: "Welcome, DA Administrator",
         description: "Routing to admin dashboard…",
       });
       navigate("/admin");
@@ -54,7 +54,7 @@ export default function Login() {
       <div className="relative w-full max-w-sm bg-card/95 backdrop-blur-md border border-border/50 rounded-2xl shadow-2xl shadow-primary/10 p-7">
         <div className="flex flex-col items-center text-center mb-6">
           <img src={logoIcon} alt="aiPHeed" className="h-20 w-20 object-contain mb-3 drop-shadow-[0_0_24px_rgba(232,69,60,0.35)]" />
-          <h1 className="text-lg font-bold tracking-tight">DOST Admin Sign In</h1>
+          <h1 className="text-lg font-bold tracking-tight">DA Admin Sign In</h1>
           <p className="text-[11px] text-muted-foreground mt-1">
             Authorized access for feedback and review workflows
           </p>
@@ -110,7 +110,7 @@ export default function Login() {
         <div className="mt-5 p-2.5 rounded-lg bg-secondary/40 border border-border/40 text-[10px] text-muted-foreground flex items-start gap-2">
           <ShieldCheck className="h-3.5 w-3.5 text-primary shrink-0 mt-0.5" />
           <span>
-            Admin access is restricted to <span className="font-bold text-foreground">@ro4a.dost.gov.ph</span> emails.
+            Admin access is restricted to <span className="font-bold text-foreground">@calabarzon.da.gov.ph</span> emails.
           </span>
         </div>
 

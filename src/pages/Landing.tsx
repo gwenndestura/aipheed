@@ -166,7 +166,7 @@ function Hero() {
           className="mt-8 mx-auto text-[17px] leading-relaxed"
           style={{ color: "var(--lp-muted)", maxWidth: 620 }}
         >
-          aiPHeed is an interactive geospatial food insecurity forecasting system for DOST
+          aiPHeed is an interactive geospatial food insecurity forecasting system for DA
           Region IV-A, combining NLP and ensemble machine learning to detect food stress before it
           peaks.
         </p>
@@ -432,7 +432,7 @@ function Methodology() {
     "Government Statistics · PSA, BSP, DOE, PhilRice, SWS",
     "Climate Data · PAGASA (typhoon count, rainfall anomaly, ENSO phase, drought alert)",
     "Commodity & Price Data · Food CPI, rice retail price, unemployment rate",
-    "Survey Anchors · DOST-FNRI ENNS 2021 & 2023",
+    "Survey Anchors · DA-FNRI ENNS 2021 & 2023",
   ];
 
   const steps = [
@@ -562,7 +562,7 @@ function FAQ() {
     },
     {
       q: "Who is the intended user of aiPHeed?",
-      a: "DOST REGION IV-A field offices, LGU planning units, academic researchers, and journalists tracking food security signals. It is a decision-support layer, not a replacement for official assessment.",
+      a: "DA REGION IV-A field offices, LGU planning units, academic researchers, and journalists tracking food security signals. It is a decision-support layer, not a replacement for official assessment.",
     },
     {
       q: "Can the system be adapted for other Philippine regions?",

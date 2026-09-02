@@ -5,7 +5,9 @@ import { TopNavbar } from "@/components/TopNavbar";
 import { toast } from "@/hooks/use-toast";
 import {
   PROVINCE_QUARTER_DATA,
-  getShapForProvince,
+  getTriggerBreakdown,
+  explainTriggerBreakdown,
+  TRIGGER_RED_CUTOFF,
   ALERT_THRESHOLD,
   RISK_DISPLAY_CUTOFF,
 } from "@/data/quarterData";
@@ -235,6 +237,30 @@ function TrendView() {
   const hasChart = !!generated && data.length > 0;
   const { downloadPng, downloadPdf } = useChartExport(chartRef, hasChart);
 
+  const trendExplanation = useMemo(() => {
+    if (!generated || data.length < 2) return "";
+    const first = data[0] as Record<string, number | string>;
+    const last = data[data.length - 1] as Record<string, number | string>;
+    const range = `${generated.from.replace("-", " ")}–${generated.to.replace("-", " ")}`;
+    const parts = seriesKeys.map((k) => {
+      const a = Number(first[k] ?? 0);
+      const b = Number(last[k] ?? 0);
+      const d = b - a;
+      const dir = d > 0.005 ? "rose" : d < -0.005 ? "fell" : "held flat";
+      return `${k} ${dir} from ${a.toFixed(2)} to ${b.toFixed(2)} (${d >= 0 ? "+" : ""}${d.toFixed(2)})`;
+    });
+    const endHigh = seriesKeys.filter((k) => Number(last[k] ?? 0) >= RISK_DISPLAY_CUTOFF);
+    const tail =
+      endHigh.length === 0
+        ? `None end above the ${RISK_DISPLAY_CUTOFF.toFixed(2)} high-risk line.`
+        : `${endHigh.join(", ")} ${endHigh.length === 1 ? "ends" : "end"} above the ${RISK_DISPLAY_CUTOFF.toFixed(2)} high-risk line${
+            seriesKeys.some((k) => Number(last[k] ?? 0) >= ALERT_THRESHOLD)
+              ? `, and past the ${ALERT_THRESHOLD.toFixed(2)} alert threshold`
+              : ""
+          }.`;
+    return `Across ${range}, ${parts.join("; ")}. ${tail} Values are AI forecasts recomputed each quarter, not official measurements.`;
+  }, [generated, data, seriesKeys]);
+
   const exportLabel = generated
     ? `${generated.province === "All" ? "all-provinces" : generated.province}${
         generated.municipality !== "All" ? `-${generated.municipality}` : ""
@@ -366,6 +392,15 @@ function TrendView() {
             </LineChart>
           </ResponsiveContainer>
         )}
+        {generated && data.length > 0 && trendExplanation && (
+          <div className="mt-4 rounded-xl border border-border/50 bg-secondary/20 px-4 py-3">
+            <div className="flex items-center gap-2 mb-1.5">
+              <LineIcon className="h-3.5 w-3.5 text-primary" />
+              <span className="text-[11px] font-bold uppercase tracking-wider">What this shows</span>
+            </div>
+            <p className="text-[11px] leading-relaxed text-muted-foreground">{trendExplanation}</p>
+          </div>
+        )}
       </div>
     </div>
   );
@@ -377,12 +412,27 @@ function ShapView() {
   const [quarter, setQuarter] = useState<string>("2026-Q2");
   const [generated, setGenerated] = useState<{ province: string; quarter: string } | null>(null);
 
-  const data = useMemo(() => {
-    if (!generated) return [];
-    const id = PROVINCE_IDS[generated.province];
-    const shap = getShapForProvince(id);
-    return [...shap].sort((a, b) => b.value - a.value);
-  }, [generated]);
+  const breakdown = useMemo(
+    () => (generated ? getTriggerBreakdown(PROVINCE_IDS[generated.province], generated.quarter) : []),
+    [generated]
+  );
+
+  // All 5 triggers, ranked high → low. pct sums to 100; colour = >20% red else yellow.
+  const data = useMemo(
+    () =>
+      breakdown
+        .map((t) => ({ feature: t.label, pct: t.pct, color: t.color }))
+        .sort((a, b) => b.pct - a.pct),
+    [breakdown]
+  );
+
+  const explanation = useMemo(
+    () =>
+      generated
+        ? explainTriggerBreakdown(generated.province, generated.quarter.replace("-", " "), breakdown)
+        : "",
+    [generated, breakdown]
+  );
 
   const handleGenerate = () => setGenerated({ province, quarter });
   const handleClear = () => {
@@ -400,14 +450,14 @@ function ShapView() {
 
   const handleDownloadPng = () => downloadPng(`aipheed_shap_${exportLabel}.png`);
   const handleDownloadPdf = () =>
-    downloadPdf(`aipheed_shap_${exportLabel}.pdf`, "Feature Contribution Breakdown (SHAP)", exportSubtitle);
+    downloadPdf(`aipheed_shap_${exportLabel}.pdf`, "SHAP Explainability — 5 Trigger Categories", exportSubtitle);
 
   return (
     <div>
       <div className="rounded-t-2xl bg-card/80 border border-border/50 px-5 sm:px-6 py-4">
-        <h1 className="text-base sm:text-lg font-bold tracking-tight">Feature Contribution Breakdown</h1>
+        <h1 className="text-base sm:text-lg font-bold tracking-tight">SHAP Explainability — 5 Trigger Categories</h1>
         <p className="text-[11px] text-muted-foreground mt-0.5 uppercase tracking-widest">
-          SHAP values by province and quarter
+          Per-trigger contribution to the risk forecast, by province and quarter
         </p>
       </div>
 
@@ -452,41 +502,67 @@ function ShapView() {
       <div ref={chartRef} className="mt-4 bg-card border border-border/50 rounded-2xl p-4 sm:p-6">
         {!generated || data.length === 0 ? (
           <div className="h-[360px] flex items-center justify-center text-[12px] text-muted-foreground italic">
-            Select a province and quarter to view feature contributions.
+            Select a province and quarter to view the trigger contributions.
           </div>
         ) : (
-          <ResponsiveContainer width="100%" height={400}>
-            <BarChart data={data} layout="vertical" margin={{ top: 10, right: 40, left: 80, bottom: 10 }}>
-              <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border)/.4)" />
-              <XAxis
-                type="number"
-                tick={{ fontSize: 10, fill: "hsl(var(--muted-foreground))" }}
-                domain={[-0.25, 0.25]}
-              />
-              <YAxis
-                type="category"
-                dataKey="feature"
-                tick={{ fontSize: 11, fill: "hsl(var(--foreground))" }}
-                width={140}
-              />
-              <Tooltip
-                contentStyle={{
-                  fontSize: 11,
-                  borderRadius: 8,
-                  background: "hsl(var(--card))",
-                  border: "1px solid hsl(var(--border))",
-                }}
-                formatter={(v: number) => [v.toFixed(3), "SHAP"]}
-              />
-              <ReferenceLine x={0} stroke="hsl(var(--border))" strokeWidth={1.5} label={{ value: "Baseline", position: "top", fontSize: 9, fill: "hsl(var(--muted-foreground))" }} />
-              <Bar dataKey="value" radius={[3, 3, 3, 3]}>
-                {data.map((d, i) => (
-                  <Cell key={i} fill={d.value >= 0 ? "hsl(var(--risk-high))" : "hsl(var(--risk-low))"} />
-                ))}
-                <LabelList dataKey="value" position="right" fontSize={10} fill="hsl(var(--foreground))" formatter={(v: number) => (v >= 0 ? `+${v.toFixed(3)}` : v.toFixed(3))} />
-              </Bar>
-            </BarChart>
-          </ResponsiveContainer>
+          <>
+            <div className="mb-3 flex items-baseline justify-between gap-3 flex-wrap">
+              <h2 className="text-[13px] font-bold tracking-tight">
+                {generated.province} · {generated.quarter.replace("-", " ")} — trigger contributions
+              </h2>
+              <span className="text-[10px] text-muted-foreground uppercase tracking-widest">SHAP explainability</span>
+            </div>
+            <ResponsiveContainer width="100%" height={320}>
+              <BarChart data={data} layout="vertical" margin={{ top: 10, right: 48, left: 20, bottom: 10 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border)/.4)" />
+                <XAxis
+                  type="number"
+                  tick={{ fontSize: 10, fill: "hsl(var(--muted-foreground))" }}
+                  domain={[0, 50]}
+                  tickFormatter={(v: number) => `${v}%`}
+                />
+                <YAxis
+                  type="category"
+                  dataKey="feature"
+                  tick={{ fontSize: 11, fill: "hsl(var(--foreground))" }}
+                  width={120}
+                />
+                <Tooltip
+                  contentStyle={{
+                    fontSize: 11,
+                    borderRadius: 8,
+                    background: "hsl(var(--card))",
+                    border: "1px solid hsl(var(--border))",
+                  }}
+                  formatter={(v: number) => [`${v}% of total risk`, "Contribution"]}
+                />
+                <ReferenceLine
+                  x={TRIGGER_RED_CUTOFF}
+                  stroke="hsl(var(--risk-high))"
+                  strokeDasharray="4 4"
+                  label={{ value: `${TRIGGER_RED_CUTOFF}% even share`, position: "top", fontSize: 8.5, fill: "hsl(var(--risk-high))" }}
+                />
+                <Bar dataKey="pct" radius={[3, 3, 3, 3]}>
+                  {data.map((d, i) => (
+                    <Cell key={i} fill={d.color} />
+                  ))}
+                  <LabelList dataKey="pct" position="right" fontSize={10} fill="hsl(var(--foreground))" formatter={(v: number) => `${v}%`} />
+                </Bar>
+              </BarChart>
+            </ResponsiveContainer>
+
+            <div className="mt-4 rounded-xl border border-border/50 bg-secondary/20 px-4 py-3">
+              <div className="flex items-center gap-2 mb-1.5">
+                <BarChart3 className="h-3.5 w-3.5 text-primary" />
+                <span className="text-[11px] font-bold uppercase tracking-wider">What this shows</span>
+              </div>
+              <p className="text-[11px] leading-relaxed text-muted-foreground">{explanation}</p>
+              <div className="mt-2 flex flex-wrap gap-3 text-[9px] uppercase tracking-wider text-muted-foreground">
+                <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-sm" style={{ background: "hsl(var(--risk-high))" }} /> Above {TRIGGER_RED_CUTOFF}% even share</span>
+                <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-sm" style={{ background: "hsl(var(--risk-moderate))" }} /> At or below {TRIGGER_RED_CUTOFF}%</span>
+              </div>
+            </div>
+          </>
         )}
       </div>
     </div>

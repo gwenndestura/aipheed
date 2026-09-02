@@ -2,7 +2,9 @@ import jsPDF from "jspdf";
 import {
   PROVINCE_QUARTER_DATA,
   getRiskLevelFromScore,
-  DEFAULT_SHAP,
+  getTriggerBreakdown,
+  explainTriggerBreakdown,
+  TRIGGER_RED_CUTOFF,
   QUEZON_TOP_MUNIS,
   SAMPLE_ARTICLES,
 } from "@/data/quarterData";
@@ -43,6 +45,7 @@ interface ReportScope {
   quarterShort: string; // e.g. "Q3 2026"
   monthsShort: string;  // e.g. "Jul-Sep"
   title: string;        // e.g. "Quezon Province" or "CALABARZON"
+  provinceId?: string | null; // for the trigger breakdown; null = regional average
   subtitle: string;     // narrative sub-clause (italic)
   probability: number;  // 0..1
   delta: number;        // vs previous quarter
@@ -201,10 +204,10 @@ function drawCover(doc: jsPDF, scope: ReportScope) {
   doc.setFont(FONT_MONO, "normal").setFontSize(7);
   doc.text(`FORECAST SYSTEM  ·  REGION IV-A`, MARGIN_X + 12, 24.5);
 
-  // Right side: DOST attribution
+  // Right side: DA attribution
   setText(doc, COL.ink);
   doc.setFont(FONT_SANS, "bold").setFontSize(8.5);
-  doc.text("Department of Science and Technology", PAGE_W - MARGIN_X, 18, { align: "right" });
+  doc.text("Department of Agriculture", PAGE_W - MARGIN_X, 18, { align: "right" });
   setText(doc, COL.muted);
   doc.setFont(FONT_MONO, "normal").setFontSize(7);
   doc.text("REGION IV-A  ·  CALABARZON", PAGE_W - MARGIN_X, 22, { align: "right" });
@@ -259,7 +262,7 @@ function drawCover(doc: jsPDF, scope: ReportScope) {
   const metaCols = [
     { h: "Forecast generated", l1: prettyDate(new Date()) + "  ·  06:00 PHT", l2: "Model version 3.2 · walk-forward validation" },
     { h: "Horizon", l1: scope.monthsShort, l2: "3-month binary risk probability" },
-    { h: "Verification date", l1: nextQuarterCheckDate(scope.quarterId), l2: "Anchored to DOST-FNRI NNS" },
+    { h: "Verification date", l1: nextQuarterCheckDate(scope.quarterId), l2: "Anchored to DA-FNRI NNS" },
   ];
   metaCols.forEach((m, i) => {
     const cx = MARGIN_X + colW * i;
@@ -325,52 +328,57 @@ function drawExecutiveSummary(doc: jsPDF, scope: ReportScope, pageNum: number) {
     { label: "Tier-1 Municipalities", value: `${scope.tier1Count}`, sub: scope.kind === "province" ? "Eastern coastal corridor" : "Within scope" },
   ], 14);
 
-  // Why this forecast — SHAP
+  // Why this forecast — SHAP explainability over the 5 trigger categories
   let y = statY + 32;
   setText(doc, COL.ink);
   doc.setFont(FONT_SANS, "bold").setFontSize(11);
   doc.text("Why this forecast", MARGIN_X, y);
   setText(doc, COL.amber);
   doc.setFont(FONT_MONO, "normal").setFontSize(7.5);
-  doc.text("SHAP DECOMPOSITION  ·  TOP 6 FEATURES", MARGIN_X + 38, y);
+  doc.text("SHAP EXPLAINABILITY  ·  5 TRIGGER CATEGORIES", MARGIN_X + 38, y);
   y += 4;
   drawHairline(doc, y);
   y += 5;
   // header row
   setText(doc, COL.muted);
   doc.setFont(FONT_MONO, "normal").setFontSize(7);
-  doc.text("FEATURE", MARGIN_X, y);
-  doc.text("CONTRIBUTION", MARGIN_X + 100, y);
-  doc.text("Δ", PAGE_W - MARGIN_X, y, { align: "right" });
+  doc.text("TRIGGER", MARGIN_X, y);
+  doc.text("SHARE OF RISK  (5 SUM TO 100%)", MARGIN_X + 100, y);
   y += 3.5;
 
-  const features = DEFAULT_SHAP.slice(0, 6);
-  const maxAbs = Math.max(...features.map((f) => Math.abs(f.value)));
-  features.forEach((f) => {
+  const triggers = getTriggerBreakdown(scope.provinceId ?? null, scope.quarterId);
+  triggers.forEach((t) => {
+    const red = t.pct > TRIGGER_RED_CUTOFF;
     setText(doc, COL.ink);
     doc.setFont(FONT_SANS, "normal").setFontSize(9);
-    doc.text(f.feature, MARGIN_X, y + 4);
-    // bar
+    doc.text(t.label, MARGIN_X, y + 4);
+    // bar — length scaled against a 50% ceiling; brick red above the 20% even-share line, else amber
     const barX = MARGIN_X + 100;
     const barW = 50;
     setFill(doc, [232, 228, 216]);
     doc.rect(barX, y + 1.5, barW, 3, "F");
-    const len = (Math.abs(f.value) / maxAbs) * barW;
-    const barCol = f.value >= 0 ? COL.amber : COL.blueAccent;
-    setFill(doc, barCol);
-    if (f.value >= 0) doc.rect(barX, y + 1.5, len, 3, "F");
-    else doc.rect(barX + barW - len, y + 1.5, len, 3, "F");
-    setText(doc, f.value >= 0 ? COL.amber : COL.blueAccent);
+    const len = Math.min(t.pct / 50, 1) * barW;
+    setFill(doc, red ? COL.tier1 : COL.amber);
+    doc.rect(barX, y + 1.5, len, 3, "F");
+    setText(doc, red ? COL.tier1 : COL.amber);
     doc.setFont(FONT_MONO, "bold").setFontSize(8.5);
-    doc.text(`${f.value >= 0 ? "+" : ""}${f.value.toFixed(2)}`, PAGE_W - MARGIN_X, y + 4, { align: "right" });
+    doc.text(`${t.pct}%`, PAGE_W - MARGIN_X, y + 4, { align: "right" });
     y += 6.5;
   });
   drawHairline(doc, y + 1);
   y += 6;
   setText(doc, COL.muted);
   doc.setFont(FONT_SERIF, "italic").setFontSize(8.5);
-  doc.text(`Base rate ${(scope.probability - DEFAULT_SHAP.reduce((s, f) => s + f.value, 0)).toFixed(2)} + contributions ≈ ${scope.probability.toFixed(2)} forecast. Amber bars push probability up; blue bars pull it down.`, MARGIN_X, y);
-  y += 10;
+  const explLines = wrap(
+    doc,
+    explainTriggerBreakdown(scope.title, scope.quarterShort, triggers),
+    CONTENT_W,
+  );
+  explLines.forEach((ln) => {
+    doc.text(ln, MARGIN_X, y);
+    y += 3.8;
+  });
+  y += 6;
 
   // Most-cited evidence
   setText(doc, COL.ink);
@@ -543,7 +551,7 @@ function drawActionsSection(doc: jsPDF, scope: ReportScope, pageNum: number) {
   doc.setFont(FONT_SANS, "normal").setFontSize(9.5);
   const lead = wrap(
     doc,
-    `These recommendations are draft suggestions requiring human confirmation by DOST Region IV-A before any downstream notification. Each action lists the evidence chain the model used to surface it.`,
+    `These recommendations are draft suggestions requiring human confirmation by DA Region IV-A before any downstream notification. Each action lists the evidence chain the model used to surface it.`,
     CONTENT_W
   );
   let y = titleEndY + 6;
@@ -613,7 +621,7 @@ function drawActionsSection(doc: jsPDF, scope: ReportScope, pageNum: number) {
   doc.setFont(FONT_SANS, "normal").setFontSize(8.5);
   const hl = wrap(
     doc,
-    `No recommendation in this report is auto-delivered. DOST Region IV-A reviews, revises, and signs each action before external notification. aiPHeed logs each sign-off for audit. This report is advisory; statutory classification of food-insecurity status remains with DOST-FNRI.`,
+    `No recommendation in this report is auto-delivered. DA Region IV-A reviews, revises, and signs each action before external notification. aiPHeed logs each sign-off for audit. This report is advisory; statutory classification of food-insecurity status remains with DA-FNRI.`,
     CONTENT_W - 8
   );
   hl.forEach((ln, i) => doc.text(ln, MARGIN_X + 4, y + 11 + i * 3.6));
@@ -624,14 +632,14 @@ function drawActionsSection(doc: jsPDF, scope: ReportScope, pageNum: number) {
   const colW = CONTENT_W / 2;
   setText(doc, COL.amber);
   doc.setFont(FONT_MONO, "normal").setFontSize(7);
-  doc.text("REVIEWED BY  ·  DOST REGION IV-A", MARGIN_X, y + 5);
+  doc.text("REVIEWED BY  ·  DA REGION IV-A", MARGIN_X, y + 5);
   doc.text("PREPARED BY  ·  AIPHEED TEAM", MARGIN_X + colW, y + 5);
   setText(doc, COL.ink);
   doc.setFont(FONT_SANS, "bold").setFontSize(10);
   doc.text(`Provincial Director, ${scope.kind === "region" ? "CALABARZON" : scope.title}`, MARGIN_X, y + 11);
   doc.text("Destura · Esico · Melindo", MARGIN_X + colW, y + 11);
 
-  drawRunningFooter(doc, scope, pageNum, "End of report", "Confidential until released  ·  for internal DOST review");
+  drawRunningFooter(doc, scope, pageNum, "End of report", "Confidential until released  ·  for internal DA review");
 }
 
 // ─────────── helpers ───────────
@@ -699,6 +707,7 @@ export function downloadRegionReport({ quarterLabel, quarterId }: CommonOpts) {
     ...buildScopeCommon(quarterLabel, quarterId),
     kind: "region",
     title: "CALABARZON",
+    provinceId: null,
     subtitle: `*regional* food-insecurity outlook.`,
     probability: avg,
     delta: avg - prevAvg,
@@ -774,6 +783,7 @@ export function downloadProvinceReport({
     ...buildScopeCommon(quarterLabel, quarterId),
     kind: "province",
     title: `${provinceName} Province`,
+    provinceId,
     subtitle: score >= 0.7 ? "*critical* food stress forecast." : score >= 0.55 ? "*elevated* risk forecast." : "*stable* outlook with watchpoints.",
     probability: score,
     delta: score - prev,
@@ -808,6 +818,7 @@ export function downloadMunicipalityReport({
     ...buildScopeCommon(quarterLabel, quarterId),
     kind: "municipality",
     title: name,
+    provinceId: PROVINCE_QUARTER_DATA.find((p) => p.name.toLowerCase() === provinceName.toLowerCase())?.id ?? null,
     subtitle: score >= 0.7 ? "*critical* municipal advisory." : score >= 0.55 ? "*elevated* municipal watch." : "*baseline* municipal outlook.",
     probability: score,
     delta: 0.05,

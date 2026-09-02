@@ -22,3 +22,6 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Basemap (see docs/basemap.md) — large binary, provisioned at deploy time
+public/basemap.pmtiles

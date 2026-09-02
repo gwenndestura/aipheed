@@ -1,8 +1,18 @@
 import { useEffect, useRef, useCallback, useMemo, useState } from "react";
 import L from "leaflet";
+import { leafletLayer } from "protomaps-leaflet";
 import { RegionData, MunicipalityData, RISK_COLORS } from "@/data/types";
 import { municipalitiesData } from "@/data/mockData";
 import "leaflet/dist/leaflet.css";
+
+// Self-hosted open basemap — a single Protomaps .pmtiles file built from
+// OpenStreetMap data (ODbL). No API key and no third-party runtime call, so
+// the map keeps working without a vendor relationship. The file location is
+// deploy-configurable; see docs/basemap.md for how to generate it.
+const PMTILES_URL =
+  (import.meta.env.VITE_BASEMAP_PMTILES_URL as string | undefined) || "/basemap.pmtiles";
+const BASEMAP_ATTRIBUTION =
+  '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="https://protomaps.com">Protomaps</a>';
 
 interface Props {
   regions: RegionData[];                        // CALABARZON provinces
@@ -15,7 +25,13 @@ interface Props {
 }
 
 const AMBER = "hsl(35, 90%, 55%)";
-const DARK_BG = "hsl(222, 30%, 8%)";
+
+// Basemap flavor + page-background colour per theme. "black" / "white" Protomaps
+// flavors are near-monochrome (no cyan water) and match the app's dark/light
+// chrome; the bg colour is the flavor's water tone so any tile-boundary is
+// invisible against the container.
+const BASEMAP_FLAVOR = { dark: "black", light: "white" } as const;
+const BASEMAP_PAGE_BG = { dark: "#1a1a1a", light: "#dcdcdc" } as const;
 
 // CALABARZON region overall bounds (overrides flaky polygon bounds for SW Quezon island fragments)
 const CALABARZON_BOUNDS: [[number, number], [number, number]] = [[13.40, 120.20], [15.20, 122.95]];
@@ -321,8 +337,8 @@ export function PhilippineMap({
     const map = L.map(mapContainerRef.current, {
       center: [14.2, 121.4],
       zoom: 8,
-      minZoom: 7,
-      maxZoom: 13,
+      minZoom: 8,
+      maxZoom: 12,
       maxBounds: [[12.8, 119.5], [15.8, 123.6]],
       maxBoundsViscosity: 1.0,
       zoomControl: false,
@@ -340,20 +356,33 @@ export function PhilippineMap({
     };
 
     const isLight = () => document.documentElement.classList.contains("light");
-    map.getContainer().style.background = isLight() ? "#F4F1EC" : DARK_BG;
+    const applyBg = () => {
+      map.getContainer().style.background = isLight() ? BASEMAP_PAGE_BG.light : BASEMAP_PAGE_BG.dark;
+    };
+    applyBg();
 
-    const darkUrl = "https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png";
-    const lightUrl = "https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png";
-    let tile = L.tileLayer(isLight() ? lightUrl : darkUrl, {
-      attribution: '&copy; OpenStreetMap contributors &copy; CARTO',
-    }).addTo(map);
+    const makeBasemap = () =>
+      leafletLayer({
+        url: PMTILES_URL,
+        flavor: isLight() ? BASEMAP_FLAVOR.light : BASEMAP_FLAVOR.dark,
+        attribution: BASEMAP_ATTRIBUTION,
+      }) as unknown as L.GridLayer;
+
+    let tile = makeBasemap().addTo(map);
+    tile.on("tileerror", () => {
+      if ((map as any).__basemapWarned) return;
+      (map as any).__basemapWarned = true;
+      console.warn(
+        `[aiPHeed] Basemap tiles could not load from "${PMTILES_URL}". ` +
+          "Province and municipality outlines still render on the themed background. " +
+          "See docs/basemap.md to provision the .pmtiles file for this deployment.",
+      );
+    });
 
     const onTheme = () => {
       map.removeLayer(tile);
-      tile = L.tileLayer(isLight() ? lightUrl : darkUrl, {
-        attribution: '&copy; OpenStreetMap contributors &copy; CARTO',
-      }).addTo(map);
-      map.getContainer().style.background = isLight() ? "#F4F1EC" : DARK_BG;
+      tile = makeBasemap().addTo(map);
+      applyBg();
     };
     window.addEventListener("aipheed:theme", onTheme);
     (map as any).__aipheedThemeCleanup = () => window.removeEventListener("aipheed:theme", onTheme);

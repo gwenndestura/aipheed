@@ -65,7 +65,7 @@ export function TopNavbar({ active = "none" }: Props) {
               Account
             </p>
             <button onClick={() => setLoginOpen(true)} className="w-full">
-              <MenuRow icon={LogIn} label="DOST Admin Login" hint="Restricted administrator access" />
+              <MenuRow icon={LogIn} label="DA Admin Login" hint="Restricted administrator access" />
             </button>
 
             <div className="pt-3 mt-3 border-t border-border/40">
@@ -127,26 +127,26 @@ function AdminLoginModal({ open, onOpenChange }: { open: boolean; onOpenChange: 
     setLoading(true);
     setTimeout(() => {
       const lower = email.trim().toLowerCase();
-      if (!lower.endsWith("@ro4a.dost.gov.ph")) {
+      if (!lower.endsWith("@calabarzon.da.gov.ph")) {
         setLoading(false);
         toast({
-          title: "DOST admin access only",
+          title: "DA admin access only",
           description: "Public users do not sign in. Use the public map without an account.",
           variant: "destructive",
         });
         return;
       }
-      if (lower !== "admin@ro4a.dost.gov.ph" || password.trim() !== "admin2026") {
+      if (lower !== "admin@calabarzon.da.gov.ph" || password.trim() !== "admin2026") {
         setLoading(false);
         toast({
           title: "Invalid credentials",
-          description: "Try admin@ro4a.dost.gov.ph / admin2026 (demo).",
+          description: "Try admin@calabarzon.da.gov.ph / admin2026 (demo).",
           variant: "destructive",
         });
         return;
       }
       sessionStorage.setItem("aipheed_user", JSON.stringify({ email: lower, role: "admin" }));
-      toast({ title: "Welcome, DOST Administrator", description: "Routing to admin dashboard…" });
+      toast({ title: "Welcome, DA Administrator", description: "Routing to admin dashboard…" });
       onOpenChange(false);
       navigate("/admin");
     }, 600);
@@ -158,7 +158,7 @@ function AdminLoginModal({ open, onOpenChange }: { open: boolean; onOpenChange: 
         <DialogHeader>
           <div className="flex flex-col items-center text-center">
             <img src={logoIcon} alt="aiPHeed" className="h-20 w-20 object-contain mb-3 drop-shadow-[0_0_24px_rgba(232,69,60,0.35)]" />
-            <DialogTitle className="text-lg font-bold tracking-tight">DOST Admin Sign In</DialogTitle>
+            <DialogTitle className="text-lg font-bold tracking-tight">DA Admin Sign In</DialogTitle>
             <DialogDescription className="text-[11px] text-muted-foreground mt-1">
               Authorized access for feedback and review workflows
             </DialogDescription>
@@ -209,8 +209,8 @@ function AdminLoginModal({ open, onOpenChange }: { open: boolean; onOpenChange: 
         <div className="mt-5 p-2.5 rounded-lg bg-secondary/40 border border-border/40 text-[10px] text-muted-foreground flex items-start gap-2">
           <ShieldCheck className="h-3.5 w-3.5 text-primary shrink-0 mt-0.5" />
           <span>
-            Admin access is restricted to <span className="font-bold text-foreground">@ro4a.dost.gov.ph</span> emails.
-            Demo credentials: <span className="font-bold text-foreground">admin@ro4a.dost.gov.ph</span> /{" "}
+            Admin access is restricted to <span className="font-bold text-foreground">@calabarzon.da.gov.ph</span> emails.
+            Demo credentials: <span className="font-bold text-foreground">admin@calabarzon.da.gov.ph</span> /{" "}
             <span className="font-bold text-foreground">admin2026</span>.
           </span>
         </div>

@@ -15,10 +15,10 @@ export function AboutModal() {
             <div className="rounded-lg p-1 bg-transparent">
               <img src={logoIcon} alt="aiPHeed" className="h-7 w-7 object-contain" />
             </div>
-            <DialogTitle className="text-sm">About aiPHeed — DOST REGION IV-A</DialogTitle>
+            <DialogTitle className="text-sm">About aiPHeed — DA REGION IV-A</DialogTitle>
           </div>
           <DialogDescription className="text-[11px] leading-relaxed pt-2">
-            aiPHeed is an interactive geospatial food-insecurity forecasting system for DOST Region IV-A.
+            aiPHeed is an interactive geospatial food-insecurity forecasting system for DA Region IV-A.
             It uses zero-shot multilingual NLP and ensemble machine learning to publish quarterly,
             3-month-ahead risk forecasts at province and municipal level. The system is intended to
             support anticipatory action — it does not replace official food-insecurity classifications.
@@ -66,8 +66,8 @@ export function AboutModal() {
           <Section title="Contact">
             <p className="text-[11px] leading-relaxed text-muted-foreground">
               For verified social protection assistance, contact{" "}
-              <b className="text-foreground">DOST Region IV-A</b> · Alabang–Zapote Rd,
-              Muntinlupa City · (02) 8807-1908 · ord@ro4a.dost.gov.ph
+              <b className="text-foreground">DA Region IV-A (CALABARZON)</b> · BPI Compound, Marawoy,
+              Lipa City, Batangas · (043) 774-2005 · ord@calabarzon.da.gov.ph
             </p>
           </Section>
 

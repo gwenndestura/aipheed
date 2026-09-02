@@ -1,5 +1,6 @@
 import { useMemo } from "react";
-import { Sparkles, Lock } from "lucide-react";
+import { Sparkles, Lock, History } from "lucide-react";
+import { QUARTER_IDS } from "@/data/quarterData";
 
 export interface Quarter {
   id: string;
@@ -10,38 +11,59 @@ export interface Quarter {
   forecast?: boolean;
   locked?: boolean;
   current?: boolean;
+  past?: boolean; // a quarter earlier than "now" — an actual, not a forecast
 }
 
 interface Props {
   value: string;
   onChange: (id: string) => void;
   quarters?: Quarter[];
+  onOpenHistory?: () => void;
 }
 
-// Active range: Q3 2025 → Q4 2026. Q2 2026 = current. All clickable, no locks.
-export function buildQuarters(): Quarter[] {
-  const monthMap = ["Jan–Mar", "Apr–Jun", "Jul–Sep", "Oct–Dec"];
-  const defs: Array<{ year: number; q: 1 | 2 | 3 | 4; forecast?: boolean; current?: boolean }> = [
-    { year: 2025, q: 3 },
-    { year: 2025, q: 4 },
-    { year: 2026, q: 1 },
-    { year: 2026, q: 2, current: true },
-    { year: 2026, q: 3, forecast: true },
-    { year: 2026, q: 4, forecast: true },
-  ];
-  return defs.map((d) => ({
-    id: `${d.year}-Q${d.q}`,
-    year: d.year,
-    q: d.q,
-    label: `Q${d.q}`,
-    monthsLabel: monthMap[d.q - 1],
-    forecast: d.forecast,
-    locked: false,
-    current: d.current,
-  }));
+const MONTHS = ["Jan–Mar", "Apr–Jun", "Jul–Sep", "Oct–Dec"];
+
+// Chronological rank of a "YYYY-Qn" id.
+const ord = (id: string) => {
+  const [y, q] = id.split("-Q");
+  return Number(y) * 4 + (Number(q) - 1);
+};
+
+/** The quarter that contains `now` in real time — e.g. September ⇒ Q3. */
+export function currentQuarterId(now: Date = new Date()): string {
+  return `${now.getFullYear()}-Q${Math.floor(now.getMonth() / 3) + 1}`;
 }
 
-export function QuarterTimeSlider({ value, onChange, quarters }: Props) {
+/**
+ * Timeline quarters, spanning the full available data range. `current` tracks
+ * real time: quarters before it are actuals (history), quarters after it are
+ * forecasts. `current` is clamped to the data range so it always resolves.
+ */
+export function buildQuarters(now: Date = new Date()): Quarter[] {
+  const ids = QUARTER_IDS as readonly string[];
+  const first = ord(ids[0]);
+  const last = ord(ids[ids.length - 1]);
+  const cur = Math.min(Math.max(ord(currentQuarterId(now)), first), last);
+
+  return ids.map((id) => {
+    const [yStr, qStr] = id.split("-Q");
+    const q = Number(qStr) as 1 | 2 | 3 | 4;
+    const o = ord(id);
+    return {
+      id,
+      year: Number(yStr),
+      q,
+      label: `Q${q}`,
+      monthsLabel: MONTHS[q - 1],
+      forecast: o > cur,
+      current: o === cur,
+      past: o < cur,
+      locked: false,
+    };
+  });
+}
+
+export function QuarterTimeSlider({ value, onChange, quarters, onOpenHistory }: Props) {
   const qs = useMemo(() => quarters ?? buildQuarters(), [quarters]);
   const idx = Math.max(0, qs.findIndex((q) => q.id === value));
   const current = qs[idx] ?? qs[0];
@@ -62,10 +84,25 @@ export function QuarterTimeSlider({ value, onChange, quarters }: Props) {
             Current
           </span>
         )}
+        {current.past && (
+          <span className="text-[8px] font-bold uppercase tracking-[0.18em] px-1.5 py-0.5 rounded-full bg-muted text-muted-foreground border border-border/50">
+            Actual
+          </span>
+        )}
         <span className="font-mono-num text-[11px] font-semibold tabular-nums text-foreground/90 drop-shadow-[0_2px_8px_rgba(0,0,0,0.7)]">
           {current.label} {current.year}
         </span>
         <span className="font-mono-num text-[10px] text-muted-foreground/80">· {current.monthsLabel}</span>
+        {onOpenHistory && (
+          <button
+            onClick={onOpenHistory}
+            title="Browse past forecasts"
+            className="ml-1 flex items-center gap-1 text-[8px] font-bold uppercase tracking-[0.15em] px-1.5 py-0.5 rounded-full border border-border/50 text-muted-foreground hover:text-foreground hover:border-foreground/40 transition-colors"
+          >
+            <History className="h-2.5 w-2.5" />
+            History
+          </button>
+        )}
       </div>
 
       {/* Track */}
@@ -113,7 +150,9 @@ export function QuarterTimeSlider({ value, onChange, quarters }: Props) {
                   />
                 ) : q.forecast ? (
                   <span className="w-2.5 h-2.5 rounded-full border border-dashed border-primary/70 bg-primary/10" />
-                ) : isPast ? (
+                ) : q.current ? (
+                  <span className="w-2.5 h-2.5 rounded-full bg-risk-low/70 ring-2 ring-risk-low/25" />
+                ) : q.past || isPast ? (
                   <span className="w-2 h-2 rounded-full bg-foreground/60" />
                 ) : (
                   <span className="w-2 h-2 rounded-full border border-muted-foreground/50 bg-transparent" />

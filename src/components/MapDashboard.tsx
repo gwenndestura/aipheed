@@ -8,6 +8,7 @@ import {
   NewsArticlesCardBody,
 } from "@/components/RightAnalyticsPanel";
 import { QuarterTimeSlider, buildQuarters } from "@/components/QuarterTimeSlider";
+import { ForecastHistoryModal } from "@/components/ForecastHistoryModal";
 import { RegionMetadataPopup } from "@/components/RegionMetadataPopup";
 import { MapLegend } from "@/components/MapLegend";
 import { MapControls } from "@/components/MapControls";
@@ -50,6 +51,7 @@ export function MapDashboard({ showAboutFeedback = true }: Props) {
   const [metadataOpen, setMetadataOpen] = useState(false);
   const [leftCollapsed, setLeftCollapsed] = useState(false);
   const [rightCollapsed, setRightCollapsed] = useState(false);
+  const [historyOpen, setHistoryOpen] = useState(false);
 
   const quarters = useMemo(() => buildQuarters(), []);
   const initialIdx = Math.max(0, quarters.findIndex((q) => q.current));
@@ -150,7 +152,7 @@ export function MapDashboard({ showAboutFeedback = true }: Props) {
                   <RfiiScoreCardBody quarterId={quarterId} quarterLabel={quarterLabel} />
                 </FloatingCard>
                 <FloatingCard>
-                  <RiskDriversCardBody />
+                  <RiskDriversCardBody quarterId={quarterId} />
                 </FloatingCard>
                 <FloatingCard>
                   <ProvinceRankingCardBody onRegionClick={handleRegionClick} />
@@ -224,7 +226,12 @@ export function MapDashboard({ showAboutFeedback = true }: Props) {
         className="absolute z-[1001] pointer-events-auto animate-slide-up transition-[left,right] duration-300"
         style={{ left: (leftCollapsed ? PEEK_W : COL_W) + 12, right: (rightCollapsed ? PEEK_W : COL_W) + 12, bottom: 12 }}
       >
-        <QuarterTimeSlider value={quarterId} onChange={setQuarterId} quarters={quarters} />
+        <QuarterTimeSlider
+          value={quarterId}
+          onChange={setQuarterId}
+          quarters={quarters}
+          onOpenHistory={() => setHistoryOpen(true)}
+        />
       </div>
 
       <div className="absolute z-[1000] animate-fade-in transition-[left] duration-300" style={{ left: (leftCollapsed ? PEEK_W : COL_W) + 12, bottom: 72 }}>
@@ -232,10 +239,21 @@ export function MapDashboard({ showAboutFeedback = true }: Props) {
       </div>
 
       <div className="absolute bottom-2 right-3 z-[1000] text-[9px] text-muted-foreground/70 px-2 py-1">
-        © OpenStreetMap · CARTO
+        © OpenStreetMap · Protomaps
       </div>
 
       <RegionMetadataPopup region={metadataRegion} open={metadataOpen} onOpenChange={setMetadataOpen} />
+
+      <ForecastHistoryModal
+        open={historyOpen}
+        onOpenChange={setHistoryOpen}
+        quarters={quarters}
+        value={quarterId}
+        onSelect={(id) => {
+          setQuarterId(id);
+          setHistoryOpen(false);
+        }}
+      />
     </div>
   );
 }

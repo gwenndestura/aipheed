@@ -5,7 +5,9 @@ import { Quarter } from "./QuarterTimeSlider";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import {
   PROVINCE_QUARTER_DATA,
-  getShapForProvince,
+  getTriggerBreakdown,
+  getCalabarzonAverage,
+  type TriggerContribution,
   SAMPLE_ARTICLES,
   type Article,
   ALERT_THRESHOLD,
@@ -47,34 +49,20 @@ export function ShapNarrativeCardBody({
 }) {
   const [glossaryOpen, setGlossaryOpen] = useState(false);
   const region = selectedRegion;
-  const shap = useMemo(() => getShapForProvince(region?.id ?? null), [region]);
-  const baseline = 0.32;
+
+  // Single source of truth — same 5 triggers, %s and colours as the left
+  // "Why is this Province at Risk?" card. Recomputed per province × quarter.
+  const triggers = useMemo(
+    () => getTriggerBreakdown(region?.id ?? null, quarter.id),
+    [region, quarter.id]
+  );
 
   const finalScore = useMemo(() => {
     if (region) {
       return PROVINCE_QUARTER_DATA.find((p) => p.id === region.id)?.scoresByQuarter[quarter.id] ?? region.riskScore;
     }
-    return baseline + shap.reduce((a, s) => a + s.value, 0);
-  }, [region, quarter.id, shap]);
-
-  // Calibrate SHAP values so baseline + Σφᵢ exactly equals the displayed Risk Level shown elsewhere.
-  const calibratedShap = useMemo(() => {
-    const target = finalScore - baseline;
-    const current = shap.reduce((a, s) => a + s.value, 0);
-    if (current === 0 || !isFinite(current)) return shap;
-    const k = target / current;
-    return shap.map((s) => ({ ...s, value: s.value * k }));
-  }, [shap, finalScore]);
-
-  const sortedShap = useMemo(
-    () => [...calibratedShap].sort((a, b) => Math.abs(b.value) - Math.abs(a.value)),
-    [calibratedShap]
-  );
-
-  const totalAbsShap = useMemo(
-    () => sortedShap.reduce((s, f) => s + Math.abs(f.value), 0),
-    [sortedShap]
-  );
+    return getCalabarzonAverage(quarter.id);
+  }, [region, quarter.id]);
 
   const subjectName = selectedMunicipality
     ? `${selectedMunicipality.name}, ${selectedMunicipality.provinceName}`
@@ -123,11 +111,11 @@ export function ShapNarrativeCardBody({
         )}
       </div>
 
-      <ShapDriverGroup title="WHY IS THE RISK HIGH?" tone="up" items={sortedShap.filter((s) => s.value > 0).slice(0, 3)} totalAbsShap={totalAbsShap} />
-      <ShapDriverGroup title="WHAT IS HELPING REDUCE THE RISK?" tone="down" items={sortedShap.filter((s) => s.value < 0).slice(0, 2)} totalAbsShap={totalAbsShap} />
+      <ShapDriverList items={triggers} />
 
       <p className="mt-2 px-1 text-[9px] italic text-muted-foreground leading-snug">
-        AI-generated estimate only. Not an official government report.
+        SHAP explainability — all 5 trigger categories, shares add to 100%, red above the
+        20% even-share line. AI-generated estimate only; not an official government report.
       </p>
 
       <GlossaryPanel open={glossaryOpen} onClose={() => setGlossaryOpen(false)} />
@@ -135,88 +123,34 @@ export function ShapNarrativeCardBody({
   );
 }
 
-const FEATURE_PHRASING: Record<string, { upLabel: string; upDesc: string; downLabel: string; downDesc: string }> = {
-  "Engel Coefficient": {
-    upLabel: "Food and rice prices are too high",
-    upDesc: "Rice, vegetables, and meat cost more than usual this quarter.",
-    downLabel: "Food and rice prices are stable",
-    downDesc: "Food price pressures have eased compared to previous quarters.",
-  },
-  "FPSI Price Stress": {
-    upLabel: "Typhoon hit the region",
-    upDesc: "A strong typhoon damaged farms and disrupted food supply.",
-    downLabel: "No major weather disruptions",
-    downDesc: "Weather conditions were favorable for food production this quarter.",
-  },
-  "Dependency Rate": {
-    upLabel: "OFW money sent home is dropping",
-    upDesc: "Families are receiving less money from relatives working abroad.",
-    downLabel: "OFW remittances are stable",
-    downDesc: "Families are receiving steady support from relatives abroad.",
-  },
-  "Income Decile": {
-    upLabel: "Income levels remain low",
-    upDesc: "A large share of households fall in lower income brackets.",
-    downLabel: "More people are employed",
-    downDesc: "Job rates are stable this quarter, helping families afford food.",
-  },
-  "Household Size": {
-    upLabel: "Households are large and stretched",
-    upDesc: "Larger households have more people to feed on limited budgets.",
-    downLabel: "Household conditions are manageable",
-    downDesc: "Smaller household sizes reduce pressure on food budgets.",
-  },
-  "Income Sources": {
-    upLabel: "Few income sources",
-    upDesc: "Families rely on fewer types of income, increasing vulnerability.",
-    downLabel: "News is not alarming",
-    downDesc: "Local news has fewer reports about food shortages this quarter.",
-  },
+const TRIGGER_DESC: Record<string, string> = {
+  market: "Rice, vegetable, and meat prices relative to normal for this quarter.",
+  climate: "Typhoons, flooding, and other climate stress on farms and food supply.",
+  employment: "Local job levels and wage income available to buy food.",
+  ofw: "Money sent home by relatives working abroad.",
+  fishkill: "Fish-kill events affecting local protein supply and fisher incomes.",
 };
 
-function ShapDriverGroup({
-  title,
-  tone,
-  items,
-  totalAbsShap,
-}: {
-  title: string;
-  tone: "up" | "down";
-  items: { feature: string; value: number }[];
-  totalAbsShap: number;
-}) {
+function ShapDriverList({ items }: { items: TriggerContribution[] }) {
   if (!items.length) return null;
-  const positive = tone === "up";
-  const labelColor = positive ? "text-risk-high" : "text-risk-low";
-  const barColor = positive ? "hsl(var(--risk-high))" : "hsl(var(--risk-low))";
-
   return (
     <section className="mb-2 space-y-1.5">
-      <p className={`text-[10px] font-bold uppercase tracking-wider ${labelColor}`}>
-        {title}
+      <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
+        Risk drivers · 5 trigger categories
       </p>
       <div className="space-y-1">
-        {items.map((s) => {
-          const phrasing = FEATURE_PHRASING[s.feature];
-          const label = phrasing ? (positive ? phrasing.upLabel : phrasing.downLabel) : s.feature;
-          const description = phrasing ? (positive ? phrasing.upDesc : phrasing.downDesc) : undefined;
-          const pct = totalAbsShap > 0 ? Math.round((Math.abs(s.value) / totalAbsShap) * 100) : 0;
-
-          return (
-            <div key={s.feature} className="rounded-md border border-border/35 bg-secondary/20 px-2 py-1.5">
-              <div className="flex items-center justify-between mb-0.5">
-                <span className="truncate text-[10px] font-bold text-foreground/90">{label}</span>
-                <span className={`text-[10px] font-mono-num font-bold ml-2 shrink-0 ${labelColor}`}>{pct}%</span>
-              </div>
-              {description && (
-                <p className="text-[10px] leading-snug text-muted-foreground">{description}</p>
-              )}
-              <div className="mt-1 h-[3px] rounded-full bg-border/30 overflow-hidden">
-                <div className="h-full rounded-full opacity-70" style={{ width: `${Math.min(pct * 2, 100)}%`, backgroundColor: barColor }} />
-              </div>
+        {items.map((s) => (
+          <div key={s.key} className="rounded-md border border-border/35 bg-secondary/20 px-2 py-1.5">
+            <div className="flex items-center justify-between mb-0.5">
+              <span className="truncate text-[10px] font-bold text-foreground/90">{s.label}</span>
+              <span className="text-[10px] font-mono-num font-bold ml-2 shrink-0" style={{ color: s.color }}>{s.pct}%</span>
             </div>
-          );
-        })}
+            <p className="text-[10px] leading-snug text-muted-foreground">{TRIGGER_DESC[s.key] ?? ""}</p>
+            <div className="mt-1 h-[3px] rounded-full bg-border/30 overflow-hidden">
+              <div className="h-full rounded-full opacity-70" style={{ width: `${s.pct}%`, backgroundColor: s.color }} />
+            </div>
+          </div>
+        ))}
       </div>
     </section>
   );

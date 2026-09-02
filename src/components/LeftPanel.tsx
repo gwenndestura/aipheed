@@ -9,6 +9,7 @@ import {
   PROVINCE_QUARTER_DATA,
   TRIGGER_CATEGORIES,
   getTriggerComposition,
+  getTriggerBreakdown,
   isLimitedSignal,
   getRiskLabel,
   getQuarterMeta,
@@ -256,17 +257,24 @@ export function RfiiScoreCardBody({ quarterId = "2026-Q2", quarterLabel }: { qua
   );
 }
 
-export function RiskDriversCardBody() {
-  const drivers: { key: string; label: string; icon: typeof Briefcase; pct: number; protective?: boolean }[] = [
-    { key: "market", label: "Market / Prices", icon: Store, pct: 0.78 },
-    { key: "climate", label: "Climate Stress", icon: CloudRain, pct: 0.66 },
-    { key: "fishkill", label: "Fish Kill", icon: Fish, pct: 0.57 },
-    { key: "employment", label: "Employment", icon: Briefcase, pct: 0.42 },
-    { key: "ofw", label: "OFW Remittance", icon: Plane, pct: 0.38 },
-  ].sort((a, b) => b.pct - a.pct);
+const TRIGGER_ICONS: Record<string, typeof Briefcase> = {
+  market: Store,
+  climate: CloudRain,
+  fishkill: Fish,
+  employment: Briefcase,
+  ofw: Plane,
+};
+
+export function RiskDriversCardBody({
+  provinceId = null,
+  quarterId = "2026-Q2",
+}: { provinceId?: string | null; quarterId?: string } = {}) {
+  // Same source of truth as the right-panel SHAP card: all 5 trigger
+  // categories, always shown (even at 0%), ranked high → low.
+  const drivers = getTriggerBreakdown(provinceId, quarterId);
 
   return (
-    <div>
+    <div key={`${provinceId ?? "region"}-${quarterId}`}>
       <div className="flex items-center gap-2 mb-3">
         <div className="w-1 h-4 rounded-full bg-primary" />
         <h3 className="text-[11px] font-bold uppercase tracking-wider">Why is this Province at Risk?</h3>
@@ -274,35 +282,28 @@ export function RiskDriversCardBody() {
       </div>
       <div className="space-y-2">
         {drivers.map((d, i) => {
-          const color = d.protective
-            ? "hsl(var(--risk-low))"
-            : i === 0 ? "hsl(var(--risk-high))"
-            : i === 1 ? "hsl(var(--risk-moderate))"
-            : "hsl(var(--primary))";
+          const Icon = TRIGGER_ICONS[d.key] ?? Store;
           return (
             <div key={d.key} className="grid grid-cols-[18px_1fr_42px] items-center gap-2">
-              <d.icon className="h-3.5 w-3.5 text-muted-foreground" />
+              <Icon className="h-3.5 w-3.5 text-muted-foreground" />
               <div>
                 <div className="flex items-center justify-between text-[10px] mb-1">
                   <span className="font-semibold">{d.label}</span>
-                  {d.protective && (
-                    <span className="text-[8px] uppercase tracking-wider text-risk-low font-bold">Protective</span>
-                  )}
                 </div>
                 <div className="h-2 bg-secondary/40 rounded-full overflow-hidden">
                   <div
                     className="h-full rounded-full animate-bar-fill"
                     style={{
                       animationDelay: `${i * 80}ms`,
-                      width: `${d.pct * 100}%`,
-                      background: color,
-                      boxShadow: `0 0 6px ${color}80`,
+                      width: `${d.pct}%`,
+                      background: d.color,
+                      boxShadow: `0 0 6px ${d.color}80`,
                     }}
                   />
                 </div>
               </div>
-              <span className="font-mono-num text-[10px] font-bold tabular-nums text-right" style={{ color }}>
-                {Math.round(d.pct * 100)}%
+              <span className="font-mono-num text-[10px] font-bold tabular-nums text-right" style={{ color: d.color }}>
+                {d.pct}%
               </span>
             </div>
           );
