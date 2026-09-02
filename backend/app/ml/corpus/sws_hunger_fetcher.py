@@ -95,8 +95,61 @@ PROVINCES = [
 # Citation pattern: SWS Survey conducted [date]; press release URL recorded
 # in source_url. Original surveys publicly archived under sws.org.ph/swsmain/.
 # ---------------------------------------------------------------------------
-# Format: (year, "Q#", total%, moderate%, severe%, press_release_keyword)
-SWS_BAL_LUZON = [
+# ===========================================================================
+# REBUILT 2026-09-01 — every prior value removed as unverifiable.
+#
+# The former table did not match SWS. Seven quarters were checked against press
+# releases and none agreed: 2024-Q4 was recorded at 10.3% against a published
+# Balance Luzon figure of 25.3%; 2025-Q4 at 9.5% against an actual 16.7%. Two
+# quarters moved in the opposite direction from the real series, and the 2025
+# block was commented "projected continuation of moderating trend" while being
+# written out as "March 2025 SWS Survey" etc. 2025 is the model holdout.
+#
+# Only values read from an SWS release appear below, each with the release URL
+# it came from. SWS migrated their website during 2025-26 and the pre-December-
+# 2024 archive is not published — the Hunger category holds exactly four
+# releases. Those quarters are therefore ABSENT, not estimated. Requesting the
+# 2010-2025 series from sws_info@sws.org.ph is the outstanding action.
+#
+# Stratum: Balance Luzon (Luzon outside NCR) — the stratum containing
+# CALABARZON. National figures are recorded separately for cross-checking only.
+#
+# Format: (year, "Q#", total%, moderate%, severe%, survey_label, source_url)
+# ===========================================================================
+SWS_BAL_LUZON_VERIFIED = [
+    (2024, "Q3", 18.1, 13.0, 5.1, "September 2024 SWS Survey",
+     "https://sws.org.ph/social-weather-report-fourth-quarter-2024-social-weather-survey-"
+     "hunger-rises-to-25-9-in-december-2024-from-22-9-in-september-2024/"),
+    (2024, "Q4", 25.3, 16.6, 8.7, "December 2024 SWS Survey",
+     "https://sws.org.ph/social-weather-report-fourth-quarter-2024-social-weather-survey-"
+     "hunger-rises-to-25-9-in-december-2024-from-22-9-in-september-2024/"),
+    (2025, "Q1", 24.0, 16.5, 7.4, "Stratbase-SWS March 15-20, 2025 National Survey",
+     "https://sws.org.ph/social-weather-report-stratbase-sws-march-15-20-2025-national-"
+     "survey-hunger-rises-to-27-2-in-march-2025/"),
+    (2025, "Q4", 16.7, 12.7, 4.0, "November 2025 SWS Survey",
+     "https://sws.org.ph/social-weather-report-hunger-rises-from-20-1-in-november-2025-"
+     "to-23-2-in-march-2026/"),
+    # Outside the 2020-2025 model window; retained for continuity.
+    (2026, "Q1", 22.4, 16.6, 5.8, "March 2026 SWS Survey",
+     "https://sws.org.ph/social-weather-report-hunger-rises-from-20-1-in-november-2025-"
+     "to-23-2-in-march-2026/"),
+    (2026, "Q2", 17.3, 13.0, 4.3, "June 2026 SWS Survey",
+     "https://sws.org.ph/social-weather-report-hunger-falls-to-20-3-in-june-2026-"
+     "from-23-2-in-march-2026/"),
+]
+
+# National totals from the same releases, for sanity checks only. Balance Luzon
+# and National are DIFFERENT series and must never be mixed — conflating them is
+# a likely origin of the discarded table.
+SWS_NATIONAL_REFERENCE = {
+    (2024, "Q3"): 22.9, (2024, "Q4"): 25.9, (2025, "Q1"): 27.2,
+    (2025, "Q4"): 20.1, (2026, "Q1"): 23.2, (2026, "Q2"): 20.3,
+}
+
+# Retained only to document what was removed. NOT data. Do not reinstate.
+_DISCARDED_UNVERIFIED_2020_2025 = "24 quarters; see git history and iteration log 09"
+
+_LEGACY_REMOVED = [
     # 2020 — pandemic year, hunger spiked dramatically
     (2020, "Q1", 8.2, 6.5, 1.7,  "March 2020 SWS Survey"),
     (2020, "Q2", 16.7, 13.8, 2.9, "May 2020 SWS Survey — pandemic spike"),
@@ -137,10 +190,17 @@ SOURCE_NOTE = ("SWS quarterly Hunger Survey, Balance of Luzon stratum. "
 
 
 def fetch_sws_hunger(start_year: int = 2020, end_year: int = 2025) -> pd.DataFrame:
-    """Build CALABARZON SWS Hunger panel; region inherited to all 5 provinces."""
+    """
+    Build the CALABARZON SWS Hunger panel from VERIFIED quarters only.
+
+    The Balance Luzon value is inherited to all five provinces: SWS publishes no
+    province cut, so these rows are not independent province observations.
+    Quarters with no published release are absent from the output entirely — they
+    are never interpolated, projected, or carried forward.
+    """
     fetched_at = datetime.now(timezone.utc).isoformat()
     rows = []
-    for year, q, total, mod, sev, label in SWS_BAL_LUZON:
+    for year, q, total, mod, sev, label, url in SWS_BAL_LUZON_VERIFIED:
         if not (start_year <= year <= end_year):
             continue
         for prov_code, prov_name in PROVINCES:
@@ -155,13 +215,32 @@ def fetch_sws_hunger(start_year: int = 2020, end_year: int = 2025) -> pd.DataFra
                 "pct_total_hunger": float(total),
                 "pct_moderate_hunger": float(mod),
                 "pct_severe_hunger": float(sev),
-                "source_url": SOURCE_BASE,
+                "stratum": "balance_luzon",
+                "geographic_level": "stratum_inherited",
+                "verified": True,
+                "source_url": url,
                 "source_note": SOURCE_NOTE,
                 "fetched_at": fetched_at,
             })
+
     df = pd.DataFrame(rows)
-    logger.info("SWS Hunger: %d rows (%d quarters × %d provinces)",
-                len(df), df["quarter"].nunique() if len(df) else 0, len(PROVINCES))
+
+    expected = {f"{y}-Q{i}" for y in range(start_year, end_year + 1) for i in range(1, 5)}
+    have = set(df["quarter"]) if len(df) else set()
+    missing = sorted(expected - have)
+    logger.info(
+        "SWS Hunger: %d rows | %d of %d quarters verified in %d-%d",
+        len(df), len(have), len(expected), start_year, end_year,
+    )
+    if missing:
+        logger.warning(
+            "%d quarters have NO published SWS release and are absent (not estimated): %s",
+            len(missing), ", ".join(missing),
+        )
+        logger.warning(
+            "SWS migrated their site; the pre-Dec-2024 archive is unpublished. "
+            "Request the 2010-2025 Balance Luzon series from sws_info@sws.org.ph."
+        )
     return df
 
 

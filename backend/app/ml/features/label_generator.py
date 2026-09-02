@@ -147,7 +147,12 @@ def _build_stress_labels(
             sws_q = sws_quarterly[
                 sws_quarterly["quarter"] == quarter
             ]["sws_hunger_pct"]
-            sws_val = float(sws_q.iloc[0]) if len(sws_q) > 0 else 0.0
+            # A quarter with no published SWS survey has NO label. Previously
+            # this fell back to 0.0, recording "no survey" as zero hunger --
+            # the least-stressed value possible -- which then went through the
+            # median threshold as if measured. Rows without SWS are dropped
+            # below instead.
+            sws_val = float(sws_q.iloc[0]) if len(sws_q) > 0 else float("nan")
 
             cpi_q = psa_sub[
                 (psa_sub["province_code"] == province_code)
@@ -173,6 +178,24 @@ def _build_stress_labels(
             })
 
     df = pd.DataFrame(rows)
+
+    # Drop province-quarters with no SWS observation. The threshold below is a
+    # median over the surviving rows, so unlabelled quarters must not enter it.
+    before = len(df)
+    df = df[df["sws_hunger_pct"].notna()].reset_index(drop=True)
+    dropped = before - len(df)
+    if dropped:
+        logger.warning(
+            "_build_stress_labels: dropped %d of %d province-quarters with no "
+            "published SWS survey (%d quarters unlabelled). Labels exist only "
+            "where hunger was actually measured.",
+            dropped, before, dropped // max(len(CALABARZON_PROVINCES), 1),
+        )
+    if df.empty:
+        raise ValueError(
+            "No province-quarter has a verified SWS hunger value — cannot build "
+            "labels. Populate sws_hunger_fetcher.SWS_BAL_LUZON_VERIFIED first."
+        )
 
     # Global median threshold over all 120 (province, quarter) pairs.
     # Guarantees ~50/50 class split across the full window.
@@ -243,6 +266,16 @@ def _build_cpi_labels(psa_path: Path) -> pd.DataFrame:
 # FAO SDG 2.1.2 regional anchor (citation only — not used in label generation)
 # ---------------------------------------------------------------------------
 
+def _opt_float(v) -> float | None:
+    """float(v), or None when the source publishes no value."""
+    if v is None or (isinstance(v, float) and pd.isna(v)):
+        return None
+    try:
+        return float(v)
+    except (TypeError, ValueError):
+        return None
+
+
 def get_fies_regional_baseline(
     nns_fies_path: Path = Path("data/processed/nns_fies.parquet"),
 ) -> dict:
@@ -256,10 +289,14 @@ def get_fies_regional_baseline(
     has elevated food insecurity prevalence (motivating the forecasting work).
 
     Returns a dict like:
-        {
-          "NNS_2021": {"moderate_or_severe_pct": 50.9, "severe_pct": 11.7},
-          "NNS_2023": {"moderate_or_severe_pct": 51.6, "severe_pct": 12.4},
-        }
+        {"NNS_2025": {"moderate_or_severe_pct": 22.6, "severe_pct": None}}
+
+    Note: the 2021 and 2023 entries were removed on 2026-09-01 as unverifiable
+    (they recorded CALABARZON at ~2x the published level, above the national
+    rate). The 2025 value is CALABARZON 22.6% against 32.6% national — the
+    region is among the LOWEST in the country, not elevated. Any text describing
+    CALABARZON as having elevated prevalence should be corrected.
+    severe_pct may be None where the release publishes no regional severe figure.
     """
     if not nns_fies_path.exists():
         logger.warning("nns_fies.parquet not found at %s — skipping FIES anchor.", nns_fies_path)
@@ -269,8 +306,10 @@ def get_fies_regional_baseline(
     for cycle in fies_df["survey_cycle"].unique():
         row = fies_df[fies_df["survey_cycle"] == cycle].iloc[0]
         out[str(cycle)] = {
-            "moderate_or_severe_pct": float(row.get("fies_moderate_severe_pct", float("nan"))),
-            "severe_pct":             float(row.get("fies_severe_pct", float("nan"))),
+            # severe_pct is None when the release publishes no regional severe
+            # figure — keep it None rather than coercing to a number.
+            "moderate_or_severe_pct": _opt_float(row.get("fies_moderate_severe_pct")),
+            "severe_pct":             _opt_float(row.get("fies_severe_pct")),
         }
     return out
 

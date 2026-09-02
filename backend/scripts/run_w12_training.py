@@ -107,7 +107,14 @@ def main():
         logger.info("=" * 60)
         try:
             from app.ml.training.evaluator import run_baseline_evaluation
-            eval_results = run_baseline_evaluation(best_params=result["best_params"])
+            # forecast_gap is required: baselines must be scored at the same
+            # horizon the model was trained for. Omitting it raised inside the
+            # try block, leaving a stale eval_results.json on disk while the
+            # summary below still reported the file as present.
+            eval_results = run_baseline_evaluation(
+                best_params=result["best_params"],
+                forecast_gap=result["max_reliable_lead_time"],
+            )
             logger.info("Baseline evaluation complete → data/processed/eval_results.json")
             # Print summary
             for baseline, metrics in eval_results.items():
@@ -120,6 +127,11 @@ def main():
                     )
         except Exception as exc:
             logger.error("Baseline evaluation failed: %s", exc)
+            logger.error(
+                "eval_results.json was NOT regenerated — any file on disk is from "
+                "an earlier run and does not describe this model."
+            )
+            raise
     else:
         logger.info("Skipping baseline evaluation (--no-eval).")
 

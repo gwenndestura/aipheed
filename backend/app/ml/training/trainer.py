@@ -55,15 +55,60 @@ STUDY_PATH    = Path("models/optuna_study.pkl")
 #   • NLP (5): the 4 FSSI features + trigger_climate (top-ranked trigger)
 #   • Government (10): the 10 highest-importance primary-data features
 # pct_total_hunger stays excluded (label leakage — see label_generator).
+# Features derived from food CPI are EXCLUDED as label leakage. stress_score is
+#   sws_hunger_t + 2 * (food_cpi_yoy_p,t - regional_mean_food_cpi_yoy_t)
+# and sws_hunger_t is identical across all five provinces in a given quarter, so
+# the food-CPI deviation term is the ONLY source of province-level variation in
+# label_stress. Feeding food_cpi_yoy (or its lag/accel/level, or the
+# food-minus-headline contrast that contains it) to the model hands it the
+# entire province-discriminating signal of its own target. Same class of
+# leakage as pct_total_hunger, one step removed.
+LEAKY_LABEL_FEATURES = [
+    "food_cpi_yoy", "food_cpi_yoy_lag1", "food_cpi_yoy_accel", "food_cpi",
+    "food_minus_headline_yoy", "food_minus_headline_yoy_lag1",
+    "food_minus_headline_yoy_accel",
+]
+
+# Lagged label features. label_stress is autocorrelated at 0.81, and naive
+# persistence scores 0.8125 accuracy purely on y_{t-1}. Withholding the lagged
+# label while benchmarking against persistence compares a model to a baseline
+# holding strictly more information. At forecast_gap=0 y_{t-1} is known at
+# prediction time; _add_label_lags shifts by (gap + 1) so the lag is never
+# drawn from inside the forecast window.
+LABEL_LAG_COLS = ["label_lag1", "label_lag2", "quarters_since_flip"]
+
+# Features that carry NO province-level variation — the same value is inherited
+# by all five provinces in a given quarter. They contribute temporal signal only.
+# Measured cross-province correlation of the underlying series:
+#   rainfall_anomaly_pct  1.0000  (was manufactured as Quezon x a constant;
+#                                  demoted to a regional series 2026-09-01)
+#   unemployment_rate     1.0000  (PSA publishes no province cut)
+#   headline_cpi          1.0000
+#   ofw_remit_yoy_pct     1.0000  (national BSP series)
+#   diesel_php_per_l      1.0000  (national DOE series)
+# Kept because their time variation is real, but none of them can help the model
+# tell one province from another. FSSI (corr -0.0095) is the only feature in this
+# matrix carrying genuinely independent province-level variation.
+REGIONAL_ONLY_FEATURES = [
+    "rainfall_anomaly_pct", "rainfall_anomaly_pct_lag1", "rainfall_anomaly_pct_accel",
+    "unemployment_rate", "unemployment_rate_lag1", "unemployment_rate_accel",
+    "headline_cpi", "ofw_remit_yoy_pct", "ofw_remit_yoy_pct_lag1",
+    "diesel_php_per_l", "diesel_php_per_l_lag1",
+]
+
 FEATURE_COLS = [
     # ── NLP / FSSI (secondary data) — reserved ──
     "FSSI", "FSSI_lag1", "FSSI_lag2", "FSSI_accel",
     "trigger_climate",
-    # ── Primary data — top 10 by gain importance ──
-    "food_cpi_yoy", "commodity_livestock", "food_cpi_yoy_lag1",
-    "rainfall_anomaly_pct_accel", "food_minus_headline_yoy_accel",
-    "commodity_leafy_veg", "ofw_remit_yoy_pct_lag1",
-    "rainfall_anomaly_pct_lag1", "commodity_fruit_veg", "food_cpi",
+    # ── Label persistence — what the naive baseline gets ──
+    "label_lag1", "label_lag2", "quarters_since_flip",
+    # ── Primary data, province-varying ──
+    "commodity_livestock", "commodity_leafy_veg", "commodity_fruit_veg",
+    "rice_price_regular_lag1",
+    # ── Primary data, regional only (temporal signal; see above) ──
+    "ofw_remit_yoy_pct_lag1", "unemployment_rate_lag1",
+    "headline_cpi", "diesel_php_per_l_lag1",
+    "rainfall_anomaly_pct_lag1", "rainfall_anomaly_pct_accel",
 ]
 
 LABEL_COL    = "label_stress"
@@ -87,10 +132,50 @@ TARGET_F1      = 0.75
 TARGET_ROC_AUC = 0.80
 
 
-def _load_data() -> tuple[pd.DataFrame, pd.Series, pd.Series]:
+def _add_label_lags(df: pd.DataFrame, forecast_gap: int) -> pd.DataFrame:
+    """
+    Add lagged-label features, shifted to respect the forecast horizon.
+
+    Predicting quarter t at a gap of k means the most recent label actually
+    observable is y_{t-k-1}, so every lag is offset by (gap + 1). At gap=0 that
+    is y_{t-1} — exactly what naive persistence uses. Rows with no history are
+    dropped by the caller via NaN handling rather than imputed, since a filled
+    lag would be a fabricated observation.
+
+    quarters_since_flip counts quarters since the label last changed value, so
+    the model can learn how stale a persistent run is — the signal that
+    distinguishes "still stressed" from "about to flip".
+    """
+    out = df.sort_values([PROVINCE_COL, QUARTER_COL]).copy()
+    shift = forecast_gap + 1
+    g = out.groupby(PROVINCE_COL)[LABEL_COL]
+
+    out["label_lag1"] = g.shift(shift)
+    out["label_lag2"] = g.shift(shift + 1)
+
+    def _since_flip(s: pd.Series) -> pd.Series:
+        lagged = s.shift(shift)
+        run = lagged.groupby((lagged != lagged.shift()).cumsum()).cumcount()
+        return run.where(lagged.notna())
+
+    out["quarters_since_flip"] = (
+        out.groupby(PROVINCE_COL)[LABEL_COL].transform(_since_flip)
+    )
+
+    before = len(out)
+    out = out.dropna(subset=["label_lag1", "label_lag2"]).reset_index(drop=True)
+    logger.info(
+        "_add_label_lags: gap=%d -> shift=%d | %d rows (dropped %d without label history)",
+        forecast_gap, shift, len(out), before - len(out),
+    )
+    return out
+
+
+def _load_data(forecast_gap: int = 0) -> tuple[pd.DataFrame, pd.Series, pd.Series]:
     """
     Load features_fused.parquet and labels.parquet.
-    Join on province_code + quarter.
+    Join on province_code + quarter, then attach lagged-label features at the
+    given forecast gap.
     Returns X (features), y (labels), quarters (for walk-forward splits).
     """
     if not FEATURES_PATH.exists():
@@ -107,6 +192,13 @@ def _load_data() -> tuple[pd.DataFrame, pd.Series, pd.Series]:
     features = pd.read_parquet(FEATURES_PATH)
     labels   = pd.read_parquet(LABELS_PATH)
 
+    leaked = [c for c in LEAKY_LABEL_FEATURES if c in FEATURE_COLS]
+    if leaked:
+        raise ValueError(
+            f"Label-leaking features present in FEATURE_COLS: {leaked}. "
+            "These are inputs to stress_score — see LEAKY_LABEL_FEATURES."
+        )
+
     df = features.merge(
         labels[[PROVINCE_COL, QUARTER_COL, LABEL_COL]],
         on=[PROVINCE_COL, QUARTER_COL],
@@ -114,6 +206,7 @@ def _load_data() -> tuple[pd.DataFrame, pd.Series, pd.Series]:
     )
 
     df = df.sort_values([QUARTER_COL, PROVINCE_COL]).reset_index(drop=True)
+    df = _add_label_lags(df, forecast_gap=forecast_gap)
 
     missing = [c for c in FEATURE_COLS if c not in df.columns]
     if missing:
@@ -132,9 +225,9 @@ def _load_data() -> tuple[pd.DataFrame, pd.Series, pd.Series]:
 
 
 def discover_max_lead_time(
-    X: pd.DataFrame,
-    y: pd.Series,
-    quarters: pd.Series,
+    X: pd.DataFrame | None = None,
+    y: pd.Series | None = None,
+    quarters: pd.Series | None = None,
 ) -> int:
     """
     Empirically identify the furthest lead time k where mean walk-forward
@@ -154,7 +247,12 @@ def discover_max_lead_time(
 
     Returns
     -------
-    int : max reliable lead time in quarters (minimum 1).
+    int : max reliable lead time in quarters, or 0 when no horizon reaches the
+          threshold — including k=1. 0 is a real answer, not an error: it says
+          the model cannot forecast ahead reliably and is operating as a
+          nowcast (forecast_gap=0 tests on the immediately next quarter).
+          This previously floored at 1, which reported a passing horizon even
+          when the k=1 scan had failed.
     """
     logger.info("=" * 60)
     logger.info(
@@ -176,14 +274,16 @@ def discover_max_lead_time(
         "max_depth":     6,
     }
 
-    df_quarters = pd.DataFrame(
-        {QUARTER_COL: quarters.values},
-        index=X.index,
-    )
-
-    k_max = 1  # fallback: at minimum, 1-quarter-ahead is always reported
+    # 0 until a horizon actually passes. Do NOT floor this at 1: doing so
+    # reports a reliable 1-quarter horizon even when the k=1 scan failed.
+    k_max = 0
 
     for k in range(1, MAX_LEAD_QUARTERS + 1):
+        # Reload per k: lagged-label features must be shifted by (k + 1) so the
+        # lag never comes from inside the forecast window.
+        X, y, quarters = _load_data(forecast_gap=k)
+        df_quarters = pd.DataFrame({QUARTER_COL: quarters.values}, index=X.index)
+
         splitter = WalkForwardSplitter(
             min_train_quarters=MIN_TRAIN_QUARTERS,
             forecast_gap=k,
@@ -205,6 +305,7 @@ def discover_max_lead_time(
             "recall":    [],
             "f1":        [],
             "roc_auc":   [],
+            "persistence_accuracy": [],
         }
 
         for train_idx, test_idx in splitter.split(df_quarters):
@@ -220,6 +321,10 @@ def discover_max_lead_time(
             y_proba = model.predict_proba(X.loc[test_idx])[:, 1]
 
             fold_metrics["accuracy"].append(accuracy_score(y_test, y_pred))
+            # Persistence on the same fold: predict the last observable label.
+            fold_metrics["persistence_accuracy"].append(
+                accuracy_score(y_test, X.loc[test_idx, "label_lag1"].astype(int))
+            )
             fold_metrics["precision"].append(
                 precision_score(y_test, y_pred, average="weighted", zero_division=0)
             )
@@ -236,6 +341,13 @@ def discover_max_lead_time(
             logger.info("k=%d: no valid folds produced. Stopping.", k)
             break
 
+        # Skill over persistence. An absolute accuracy threshold is not a
+        # standard here: label_stress is autocorrelated at ~0.81, so copying
+        # y_{t-1} already scores ~0.8125 and clears the 75% bar without a model.
+        # What matters is whether the model beats that baseline.
+        persist_acc = float(np.mean(fold_metrics["persistence_accuracy"])) \
+            if fold_metrics.get("persistence_accuracy") else float("nan")
+
         mean_acc       = float(np.mean(fold_metrics["accuracy"]))
         mean_precision = float(np.mean(fold_metrics["precision"])) if fold_metrics["precision"] else float("nan")
         mean_recall    = float(np.mean(fold_metrics["recall"]))    if fold_metrics["recall"]    else float("nan")
@@ -243,21 +355,37 @@ def discover_max_lead_time(
         mean_auc       = float(np.mean(fold_metrics["roc_auc"]))   if fold_metrics["roc_auc"]   else float("nan")
         passed         = mean_acc >= ACCURACY_THRESHOLD
 
+        skill = mean_acc - persist_acc
         logger.info(
-            "k=%-2d | Accuracy=%.4f | Precision=%.4f | Recall=%.4f | "
+            "k=%-2d | Accuracy=%.4f | persistence=%.4f | skill=%+.4f | "
             "F1=%.4f | AUC-ROC=%.4f | %s",
-            k, mean_acc, mean_precision, mean_recall, mean_f1, mean_auc,
+            k, mean_acc, persist_acc, skill, mean_f1, mean_auc,
             "PASS  (>= 75%)" if passed else "FAIL  (< 75%) — HALTING",
         )
+        if passed and skill <= 0:
+            logger.warning(
+                "k=%d clears the %.0f%% bar but does NOT beat persistence "
+                "(skill %+.4f). The absolute threshold is weaker than the naive "
+                "baseline — report skill, not raw accuracy.",
+                k, ACCURACY_THRESHOLD * 100, skill,
+            )
 
         if passed:
             k_max = k
         else:
-            logger.info(
-                "Accuracy fell below %.0f%% at k=%d. "
-                "Maximum Reliable Lead Time = %d quarter(s) ahead.",
-                ACCURACY_THRESHOLD * 100, k, k_max,
-            )
+            if k_max == 0:
+                logger.warning(
+                    "Accuracy %.4f < %.0f%% at the shortest horizon (k=1). "
+                    "NO lead time meets the reliability threshold — reporting 0. "
+                    "The model is a nowcast, not a forecaster.",
+                    mean_acc, ACCURACY_THRESHOLD * 100,
+                )
+            else:
+                logger.info(
+                    "Accuracy fell below %.0f%% at k=%d. "
+                    "Maximum Reliable Lead Time = %d quarter(s) ahead.",
+                    ACCURACY_THRESHOLD * 100, k, k_max,
+                )
             break
     else:
         logger.info(
@@ -297,15 +425,20 @@ def _make_objective(
             "boosting_type":     "gbdt",
             "random_state":      RANDOM_SEED,
             "class_weight":      "balanced",
-            "num_leaves":        trial.suggest_int("num_leaves", 20, 150),
-            "max_depth":         trial.suggest_int("max_depth", 3, 10),
-            "learning_rate":     trial.suggest_float("learning_rate", 1e-4, 0.3, log=True),
-            "n_estimators":      trial.suggest_int("n_estimators", 50, 500),
-            "min_child_samples": trial.suggest_int("min_child_samples", 10, 50),
-            "subsample":         trial.suggest_float("subsample", 0.5, 1.0),
+            # Search space sized for the data, not for a large dataset. With
+            # ~115 rows the previous space (num_leaves up to 150, depth to 10,
+            # reg_alpha down to 1e-8) could fit a leaf per observation; Optuna
+            # never converged, swinging num_leaves 137->78->112 across runs.
+            # A tree here can only afford a handful of splits.
+            "num_leaves":        trial.suggest_int("num_leaves", 2, 8),
+            "max_depth":         trial.suggest_int("max_depth", 2, 4),
+            "learning_rate":     trial.suggest_float("learning_rate", 1e-3, 0.2, log=True),
+            "n_estimators":      trial.suggest_int("n_estimators", 50, 400),
+            "min_child_samples": trial.suggest_int("min_child_samples", 10, 30),
+            "subsample":         trial.suggest_float("subsample", 0.6, 1.0),
             "colsample_bytree":  trial.suggest_float("colsample_bytree", 0.5, 1.0),
-            "reg_alpha":         trial.suggest_float("reg_alpha", 1e-8, 10.0, log=True),
-            "reg_lambda":        trial.suggest_float("reg_lambda", 1e-8, 10.0, log=True),
+            "reg_alpha":         trial.suggest_float("reg_alpha", 1e-3, 10.0, log=True),
+            "reg_lambda":        trial.suggest_float("reg_lambda", 1e-3, 10.0, log=True),
         }
 
         splitter = WalkForwardSplitter(
@@ -369,14 +502,17 @@ def train_model() -> dict:
     logger.info("LIGHTGBM TRAINING PIPELINE — aiPHeed")
     logger.info("=" * 60)
 
-    X, y, quarters = _load_data()
-
     # ── Step 1: Empirically discover maximum reliable lead time ──────────
     # This removes the fixed FORECAST_GAP=3 assumption and answers:
     # "What is the furthest lead time at which aiPHeed can reliably forecast
     #  province-level food insecurity risk across CALABARZON?"
-    max_reliable_lead_time = discover_max_lead_time(X, y, quarters)
+    # The scan reloads per k because the lagged-label features depend on the
+    # gap: at gap k only y_{t-k-1} and older are observable.
+    max_reliable_lead_time = discover_max_lead_time(None, None, None)
     forecast_gap = max_reliable_lead_time
+
+    # Reload at the discovered horizon so the lags match the horizon trained on.
+    X, y, quarters = _load_data(forecast_gap=forecast_gap)
 
     logger.info(
         "LIGHTGBM TRAINING — WALK-FORWARD CV (gap=%d, holdout=%d quarters)",
@@ -494,11 +630,19 @@ def train_model() -> dict:
     logger.info("Production model saved to %s", MODEL_PATH)
 
     # ── MLflow logging (best-effort; model already saved to disk) ────────
-    logger.info(
-        "ANSWER — Research Question 2: Maximum Reliable Lead Time = %d quarter(s) ahead "
-        "(furthest horizon where walk-forward Accuracy >= %.0f%%)",
-        max_reliable_lead_time, ACCURACY_THRESHOLD * 100,
-    )
+    if max_reliable_lead_time == 0:
+        logger.warning(
+            "ANSWER — Research Question 2: NO reliable forecast horizon. Walk-forward "
+            "Accuracy stayed below %.0f%% at every lead time tested, k=1 included, so "
+            "the model is reported as a nowcast (gap=0) rather than a forecaster.",
+            ACCURACY_THRESHOLD * 100,
+        )
+    else:
+        logger.info(
+            "ANSWER — Research Question 2: Maximum Reliable Lead Time = %d quarter(s) ahead "
+            "(furthest horizon where walk-forward Accuracy >= %.0f%%)",
+            max_reliable_lead_time, ACCURACY_THRESHOLD * 100,
+        )
 
     try:
         with mlflow.start_run(run_name="lgbm_aipheed"):

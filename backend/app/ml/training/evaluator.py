@@ -63,8 +63,14 @@ NLP_FEATURES: list[str] = [
     "trigger_ofw_remittance", "trigger_fish_kill",
 ]
 
+# food_cpi and every feature derived from it are EXCLUDED as label leakage.
+# stress_score = sws_hunger_t + 2 * (food_cpi_yoy_p,t - regional_mean_t), and
+# sws_hunger_t is constant across provinces within a quarter, so food_cpi_yoy
+# supplies all province-level variation in label_stress. Keeping these in the
+# baselines while the model (trainer.LEAKY_LABEL_FEATURES) excludes them would
+# hand the baselines information the model is denied.
 PSA_FEATURES: list[str] = [
-    "food_cpi", "food_cpi_yoy", "food_minus_headline_yoy", "headline_cpi",
+    "headline_cpi",
     "rice_price_regular",
     "unemployment_rate", "poverty_incidence",
     "ofw_remit_yoy_pct", "fx_usd_php_avg",
@@ -74,8 +80,6 @@ PSA_FEATURES: list[str] = [
     "commodity_fruit_veg", "commodity_leafy_veg", "commodity_livestock",
     "commodity_poultry", "commodity_rootcrops",
     # 1-quarter lags (momentum signal — primary data only, mirrors FSSI_lag pattern)
-    "food_cpi_yoy_lag1",         "food_cpi_yoy_accel",
-    "food_minus_headline_yoy_lag1", "food_minus_headline_yoy_accel",
     "unemployment_rate_lag1",    "unemployment_rate_accel",
     "ofw_remit_yoy_pct_lag1",    "ofw_remit_yoy_pct_accel",
     "rainfall_anomaly_pct_lag1", "rainfall_anomaly_pct_accel",

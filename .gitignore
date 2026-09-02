@@ -1,1 +1,8 @@
 .claude/
+
+# Bulk reference geometry — geoBoundaries PHL ADM2 is 424MB and re-downloadable
+# from https://www.geoboundaries.org/api/current/gbOpen/PHL/ADM2/
+backend/data/reference/*.geojson
+
+# Local backups taken before destructive rebuilds; regenerable, not history
+backend/data/archive/

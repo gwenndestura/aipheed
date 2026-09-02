@@ -74,34 +74,66 @@ PROVINCES = [
 ]
 
 # ---------------------------------------------------------------------------
-# Curated published values — DOST-FNRI ENNS regional FIES (Region IV-A)
-# Source citations recorded per row. These are public statistics released
-# in ENNS dissemination forums and PSA SDG Watch.
+# DOST-FNRI regional FIES (Region IV-A / CALABARZON)
 #
-# NOTE: aiPHeed v2 spec uses these as the PRIMARY label. Values reflect
-# FAO SDG 2.1.2 methodology (FIES, raw prevalence, population-weighted).
-# Province-level allocation is inherited from regional value because
-# DOST-FNRI does not publish province FIES (Region IV-A is the lowest
-# administrative cut released).
+# CORRECTED 2026-09-01. The previous table carried CALABARZON at 50.9% (2021)
+# and 51.6% (2023) moderate-or-severe. Those values contradict the published
+# record in both magnitude and direction: DOST-FNRI reports 31.4% moderate-to-
+# severe NATIONALLY for 2023, and CALABARZON is consistently among the LOWEST
+# regions in the country (22.6% in 2025). The old figures put CALABARZON at
+# roughly double the correct level and above the national average, which would
+# rank it among the worst-off regions rather than the best. Both rows carried
+# a generic enutrition.fnri.dost.gov.ph URL rather than a real citation, and
+# the module docstring designated them the PRIMARY LABEL.
+#
+# Rule going forward: a value enters this table only with a retrievable source.
+# `provenance` records how it was obtained; `verified` is False for anything
+# not read from a DOST-FNRI publication. Nothing is interpolated or projected.
+#
+#   primary_publication  — read from a DOST-FNRI page or publication
+#   secondary_reporting  — press coverage of an FNRI release; usable as a
+#                          validation reference, NOT as a label, until the
+#                          primary table is obtained
 # ---------------------------------------------------------------------------
 
 ENNS_REGIONAL_FIES = [
     {
-        "survey_cycle": "NNS_2021",
-        "year": 2021,
-        "fies_moderate_severe_pct": 50.9,  # Region IV-A, ENNS 2021
-        "fies_severe_pct": 11.7,
-        "source_url": "https://enutrition.fnri.dost.gov.ph/",
-        "source_note": "DOST-FNRI Expanded NNS 2021 — Region IV-A CALABARZON; FAO FIES SDG 2.1.2 methodology.",
+        "survey_cycle": "NNS_2025",
+        "year": 2025,
+        "fies_moderate_severe_pct": 22.6,
+        "fies_severe_pct": None,          # regional severe % not published in the release
+        "verified": True,
+        "provenance": "secondary_reporting",
+        "source_url": "https://explained.ph/3-sa-10-pilipino-nakaranas-ng-food-insecurity-noong-2025-barmm-pinakaapektado/",
+        "source_note": (
+            "DOST-FNRI 2025 Updating of the Nutritional Status of Filipino Children and "
+            "Other Population Groups, food insecurity component; presented at the 2026 "
+            "National Nutrition Summit, released 17 June 2026. Regional table as reported "
+            "in press coverage (national 32.6%, severe 2.9%; BARMM highest 60.4%, "
+            "CAR lowest 18.9%). Replace source_url with the DOST-FNRI primary publication "
+            "when obtained — this is the dataset FNRI authorised for regional validation."
+        ),
     },
-    {
-        "survey_cycle": "NNS_2023",
-        "year": 2023,
-        "fies_moderate_severe_pct": 51.6,  # Region IV-A, ENNS 2023
-        "fies_severe_pct": 12.4,
-        "source_url": "https://enutrition.fnri.dost.gov.ph/",
-        "source_note": "DOST-FNRI Expanded NNS 2023 — Region IV-A CALABARZON; FAO FIES SDG 2.1.2 methodology.",
-    },
+]
+
+# National reference points, for sanity-checking any regional value added here.
+# A CALABARZON figure above the national rate should be treated as suspect.
+FNRI_NATIONAL_REFERENCE = {
+    2023: {"moderate_severe_pct": 31.4, "severe_pct": 2.7,
+           "source_url": "https://www.fnri.dost.gov.ph/index.php/programs-and-projects/"
+                         "news-and-announcement/880-dost-fnri-presents-the-latest-ph-nutrition-situation"},
+    2025: {"moderate_severe_pct": 32.6, "severe_pct": 2.9,
+           "source_url": "https://explained.ph/3-sa-10-pilipino-nakaranas-ng-food-insecurity-"
+                         "noong-2025-barmm-pinakaapektado/"},
+}
+
+# Cycles whose CALABARZON value was removed as unverifiable. Listed so the gap
+# is visible rather than silently absent — do not refill without a citation.
+REMOVED_UNVERIFIED = [
+    {"survey_cycle": "NNS_2021", "year": 2021, "removed_value": 50.9,
+     "reason": "contradicts published record; no retrievable source"},
+    {"survey_cycle": "NNS_2023", "year": 2023, "removed_value": 51.6,
+     "reason": "contradicts FNRI national 31.4% for 2023; no retrievable source"},
 ]
 
 
@@ -139,6 +171,20 @@ def fetch_enns_fies(start_year: int = 2020, end_year: int = 2025) -> pd.DataFram
     for cycle in ENNS_REGIONAL_FIES:
         if not (start_year <= cycle["year"] <= end_year):
             continue
+
+        # Sanity gate: CALABARZON sits below the national rate in every FNRI
+        # release on record. A regional value above national is the signature
+        # of the error this table was corrected for.
+        ref = FNRI_NATIONAL_REFERENCE.get(cycle["year"])
+        if ref and cycle["fies_moderate_severe_pct"] > ref["moderate_severe_pct"]:
+            raise ValueError(
+                f"{cycle['survey_cycle']}: CALABARZON "
+                f"{cycle['fies_moderate_severe_pct']}% exceeds the national "
+                f"{ref['moderate_severe_pct']}% for {cycle['year']}. CALABARZON is "
+                "consistently among the lowest regions — check the source before "
+                "adding this value."
+            )
+
         for prov_code, prov_name in PROVINCES:
             rows.append({
                 "survey_cycle": cycle["survey_cycle"],
@@ -149,14 +195,34 @@ def fetch_enns_fies(start_year: int = 2020, end_year: int = 2025) -> pd.DataFram
                 "province_name": prov_name,
                 "fies_moderate_severe_pct": cycle["fies_moderate_severe_pct"],
                 "fies_severe_pct": cycle["fies_severe_pct"],
+                # Regional value inherited to provinces: FNRI publishes no
+                # province cut. Province rows are NOT independent observations.
+                "geographic_level": "region_inherited",
+                "verified": cycle["verified"],
+                "provenance": cycle["provenance"],
                 "source_url": cycle["source_url"],
                 "source_note": cycle["source_note"],
                 "fetched_at": fetched_at,
             })
 
     df = pd.DataFrame(rows)
-    logger.info("ENNS FIES: %d rows (%d cycles × %d provinces)",
-                len(df), df["survey_cycle"].nunique() if len(df) else 0, len(PROVINCES))
+    if df.empty:
+        logger.warning(
+            "ENNS FIES: no cycles in %d-%d. Two cycles (2021, 2023) were removed as "
+            "unverifiable — see REMOVED_UNVERIFIED. Do not refill without a citation.",
+            start_year, end_year,
+        )
+    else:
+        logger.info(
+            "ENNS FIES: %d rows (%d cycles x %d provinces) | provenance: %s",
+            len(df), df["survey_cycle"].nunique(), len(PROVINCES),
+            dict(df["provenance"].value_counts()),
+        )
+        if (df["provenance"] == "secondary_reporting").any():
+            logger.warning(
+                "Some values come from press coverage, not a DOST-FNRI publication. "
+                "Usable for regional VALIDATION; not as a training label."
+            )
     return df
 
 

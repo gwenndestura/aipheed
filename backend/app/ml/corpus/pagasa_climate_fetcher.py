@@ -161,14 +161,33 @@ CALABARZON_QUARTERLY = [
     (2025, "Q4", "PH040300000", 1, 3, +15.0, 0, ""),
 ]
 
-# Province exposure multipliers (relative to Quezon = baseline 1.0)
-PROVINCE_TC_MULT = {
-    "PH040300000": 1.00,  # Quezon — Pacific-facing, full exposure
-    "PH040400000": 0.70,  # Rizal — eastern-Luzon adjacent
-    "PH040200000": 0.55,  # Laguna — sheltered by Sierra Madre
-    "PH040500000": 0.45,  # Batangas — Manila-Bay side
-    "PH040100000": 0.40,  # Cavite — most sheltered
-}
+# ---------------------------------------------------------------------------
+# DEMOTED 2026-09-01 — province variation removed.
+#
+# This fetcher previously derived four of the five provinces from the Quezon
+# series by a fixed "Sierra Madre shielding factor":
+#
+#     rainfall_anom = anom_qz * (0.5 + 0.5 * PROVINCE_TC_MULT[province])
+#
+# The result was that rainfall_anomaly_pct correlated at EXACTLY 1.0000 between
+# every pair of provinces — Cavite was 0.70 x Quezon in all 24 quarters. Two
+# features built on it, rainfall_anomaly_pct_lag1 and rainfall_anomaly_pct_accel,
+# were live in trainer.FEATURE_COLS, so the model was being handed one province's
+# weather scaled five ways and presented as province-level measurement. Scaling a
+# percentage anomaly by an exposure coefficient is not meaningful in any case: a
+# sheltered province has its own anomaly, not a fraction of its neighbour's.
+#
+# Only Quezon ever had underlying data, so the honest treatment is to publish it
+# as a single REGIONAL series inherited to all five provinces — the same
+# convention used for SWS hunger and FNRI FIES. The temporal signal is real and
+# is retained; the province signal never existed and is now absent rather than
+# manufactured.
+#
+# To restore genuine province-level climate data, source per-station rainfall
+# from the PAGASA Climate Data Section (CLIMPS) rather than reintroducing a
+# multiplier.
+# ---------------------------------------------------------------------------
+GEOGRAPHIC_LEVEL = "region_inherited"
 
 
 def fetch_pagasa_climate(start_year: int = 2020, end_year: int = 2025) -> pd.DataFrame:
@@ -187,27 +206,28 @@ def fetch_pagasa_climate(start_year: int = 2020, end_year: int = 2025) -> pd.Dat
         tc_qz, sig_qz, anom_qz, drought, note = base
 
         for prov_code, prov_name in PROVINCES:
-            mult = PROVINCE_TC_MULT.get(prov_code, 0.5)
-            tc_count = max(0, int(round(tc_qz * mult)))
-            # max signal scales but caps at quezon level
-            max_sig = sig_qz if mult >= 0.7 else max(0, sig_qz - 1) if sig_qz > 1 else 0
-            rainfall_anom = round(anom_qz * (0.5 + 0.5 * mult), 2)
+            # Regional value inherited unchanged to every province. No scaling:
+            # see the DEMOTED note above. These rows are NOT independent
+            # province observations and must not be read as such.
             rows.append({
                 "province_code": prov_code,
                 "province_name": prov_name,
                 "year": year,
                 "quarter": f"{year}-{q}",
-                "tc_count": tc_count,
-                "tc_max_signal": max_sig,
-                "tc_severe_flag": int(max_sig >= 3),
-                "rainfall_anomaly_pct": rainfall_anom,
+                "tc_count": tc_qz,
+                "tc_max_signal": sig_qz,
+                "tc_severe_flag": int(sig_qz >= 3),
+                "rainfall_anomaly_pct": anom_qz,
                 "enso_phase": enso_phase,
                 "enso_intensity": enso_intensity,
                 "drought_alert": int(drought),
+                "geographic_level": GEOGRAPHIC_LEVEL,
+                "province_varying": False,
                 "source_url": SOURCE_BASE,
                 "source_note": (f"PAGASA Annual TC Report + Monthly Climate Assessment {year}{q}. "
-                                f"Province exposure scaled from Quezon baseline by Sierra Madre "
-                                f"shielding factor. {note}").strip(),
+                                f"CALABARZON-level series (Quezon-station baseline) inherited to "
+                                f"all provinces; no province-level disaggregation available. "
+                                f"{note}").strip(),
                 "fetched_at": fetched_at,
             })
 
