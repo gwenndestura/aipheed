@@ -54,7 +54,15 @@ export function MapDashboard({ showAboutFeedback = true }: Props) {
   const [historyOpen, setHistoryOpen] = useState(false);
 
   const quarters = useMemo(() => buildQuarters(), []);
-  const initialIdx = Math.max(0, quarters.findIndex((q) => q.current));
+  // This is a forecasting tool — open on the first forecast quarter (the
+  // 3-month-ahead horizon), not the real-time "current" quarter. Fall back to
+  // the current quarter, then the latest, if no forecast quarter exists.
+  const initialIdx = (() => {
+    const forecast = quarters.findIndex((q) => q.forecast);
+    if (forecast !== -1) return forecast;
+    const current = quarters.findIndex((q) => q.current);
+    return current !== -1 ? current : quarters.length - 1;
+  })();
   const [quarterId, setQuarterId] = useState<string>(quarters[initialIdx].id);
   const currentQuarter = quarters.find((q) => q.id === quarterId) ?? quarters[0];
   const quarterLabel = `${currentQuarter.label} ${currentQuarter.year} · ${currentQuarter.monthsLabel.toUpperCase()}`;
