@@ -7,12 +7,28 @@ Formula (Backend Guide v3):
     y_m = y_province * (0.6 * poverty_m + 0.4 * density_m)
 
 where:
-    y_province  = province risk probability from LightGBM (Predictor)
-    poverty_m   = LGU poverty incidence (PSA 2021 SAE), normalized within province
+    y_province  = province risk from Predictor.forecast_quarter(); since
+                  2026-09-01 that is the SHARE of a province's monitored
+                  commodity series flagged at risk, not a single stress
+                  probability
+    poverty_m   = LGU poverty incidence, normalized within province
     density_m   = LGU population density (PSA 2020 CPH), normalized within province
 
 The output is a ranked DataFrame with 142 municipal risk indices per quarter.
 Every output row MUST carry disaggregation_label (Backend Guide Rule 8).
+
+KNOWN LIMITATION -- the poverty term is weaker than its 60% weight implies.
+lgu_poverty.parquet resolves to only 3-5 distinct values per province across
+142 LGUs, and its own source_note reads "province-mean fallback -- LGU SAE not
+in table": most municipalities carry their province's mean rather than a real
+Small Area Estimate. It still drives the ranking (correlation 0.740 with the
+final score against 0.334 for density) because of that weight, so within-province
+ordering rests largely on a variable that barely varies within a province.
+
+PSA released genuine 2021 city and municipal poverty estimates in April 2024
+covering 114 cities and 1,484 municipalities. Loading those would make this
+disaggregation what the label claims it already is. Until then the label says
+what the data actually is.
 
 Usage:
     from app.ml.inference.disaggregator import Disaggregator
@@ -37,10 +53,13 @@ LGU_CENSUS_PATH  = Path("data/processed/lgu_census.parquet")
 LGU_POVERTY_PATH = Path("data/processed/lgu_poverty.parquet")
 
 DISAGGREGATION_LABEL = (
-    "Spatially disaggregated estimate derived from province-level LightGBM forecast "
-    "using PSA 2021 SAE poverty incidence (60%) and PSA 2020 CPH population density (40%). "
-    "Municipal-level uncertainty is higher than province-level uncertainty. "
-    "Not an independent municipal forecast."
+    "Spatially disaggregated estimate derived from the province-level "
+    "food-availability shock forecast, weighted by LGU poverty incidence (60%) "
+    "and PSA 2020 CPH population density (40%). Poverty values are largely "
+    "province means rather than municipal Small Area Estimates, so "
+    "within-province ordering is indicative only. Municipal-level uncertainty "
+    "is higher than province-level uncertainty. Not an independent municipal "
+    "forecast."
 )
 
 # Vulnerability weight split (Backend Guide v3)
