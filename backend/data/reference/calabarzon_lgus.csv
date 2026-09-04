@@ -1,0 +1,143 @@
+province_code,province_name,lgu_psgc,lgu_name,lgu_aliases,lgu_type,population_2020,land_area_km2,pop_source
+PH040500000,Batangas,041001000,Agoncillo,,municipality,39101,49.96,cph2020
+PH040500000,Batangas,041002000,Alitagtag,,municipality,26819,24.76,cph2020
+PH040500000,Batangas,041003000,Balayan,,municipality,95913,108.73,cph2020
+PH040500000,Batangas,041004000,Balete,,municipality,24055,25.0,cph2020
+PH040500000,Batangas,041005000,Batangas City,,city,351437,282.96,cph2020
+PH040500000,Batangas,041006000,Bauan,,municipality,90819,53.31,cph2020
+PH040500000,Batangas,041007000,Calaca,,city,87361,114.58,cph2020
+PH040500000,Batangas,041008000,Calatagan,,municipality,58719,101.5,cph2020
+PH040500000,Batangas,041009000,Cuenca,,municipality,36235,58.18,cph2020
+PH040500000,Batangas,041010000,Ibaan,,municipality,58507,68.99,cph2020
+PH040500000,Batangas,041011000,Laurel,,municipality,43210,71.29,cph2020
+PH040500000,Batangas,041012000,Lemery,,municipality,93186,109.8,cph2020
+PH040500000,Batangas,041013000,Lian,,municipality,56280,76.8,cph2020
+PH040500000,Batangas,041014000,Lipa,,city,372931,209.4,cph2020
+PH040500000,Batangas,041015000,Lobo,,municipality,40736,175.03,cph2020
+PH040500000,Batangas,041016000,Mabini,,municipality,50858,44.47,cph2020
+PH040500000,Batangas,041017000,Malvar,,municipality,64379,33.0,cph2020
+PH040500000,Batangas,041018000,Mataasnakahoy,Mataas na Kahoy|Mataas Na Kahoy,municipality,30621,19.66,cph2020
+PH040500000,Batangas,041019000,Nasugbu,,municipality,136524,278.51,cph2020
+PH040500000,Batangas,041020000,Padre Garcia,Pdre. Garcia,municipality,51853,41.51,cph2020
+PH040500000,Batangas,041021000,Rosario,,municipality,128352,226.88,cph2020
+PH040500000,Batangas,041022000,San Jose,,municipality,79868,53.29,cph2020
+PH040500000,Batangas,041023000,San Juan,,municipality,114068,273.4,cph2020
+PH040500000,Batangas,041024000,San Luis,,municipality,36172,42.56,cph2020
+PH040500000,Batangas,041025000,San Nicolas,,municipality,23908,22.61,cph2020
+PH040500000,Batangas,041026000,San Pascual,,municipality,69009,50.7,cph2020
+PH040500000,Batangas,041027000,Santa Teresita,Sta. Teresita|Sta Teresita,municipality,21559,16.3,cph2020
+PH040500000,Batangas,041028000,Sto. Tomas,Santo Tomas|Sto Tomas,city,218500,95.41,cph2020
+PH040500000,Batangas,041029000,Taal,,municipality,61460,29.76,cph2020
+PH040500000,Batangas,041030000,Talisay,,municipality,46238,28.2,cph2020
+PH040500000,Batangas,041031000,Tanauan,,city,193936,107.16,cph2020
+PH040500000,Batangas,041032000,Taysan,,municipality,40146,93.62,cph2020
+PH040500000,Batangas,041033000,Tingloy,,municipality,19215,33.07,cph2020
+PH040500000,Batangas,041034000,Tuy,,municipality,46519,94.65,cph2020
+PH040100000,Cavite,042101000,Alfonso,,municipality,59306,66.58,cph2020
+PH040100000,Cavite,042102000,Amadeo,,municipality,41901,36.92,cph2020
+PH040100000,Cavite,042103000,Bacoor,,city,664625,46.17,cph2020
+PH040100000,Cavite,042104000,Carmona,,city,106256,29.75,cph2020
+PH040100000,Cavite,042105000,Cavite City,,city,100674,10.89,cph2020
+PH040100000,Cavite,042106000,Dasmariñas,Dasmarinas,city,703141,90.13,cph2020
+PH040100000,Cavite,042123000,Gen. Mariano Alvarez,General Mariano Alvarez,municipality,172433,9.4,cph2020
+PH040100000,Cavite,042107000,General Emilio Aguinaldo,Gen. Emilio Aguinaldo,municipality,23973,42.13,cph2020
+PH040100000,Cavite,042108000,General Trias,Gen. Trias,city,450583,90.01,cph2020
+PH040100000,Cavite,042109000,Imus,,city,496794,171.66,cph2020
+PH040100000,Cavite,042110000,Indang,,municipality,68699,74.9,cph2020
+PH040100000,Cavite,042111000,Kawit,,municipality,107535,25.15,cph2020
+PH040100000,Cavite,042112000,Magallanes,,municipality,23851,73.07,cph2020
+PH040100000,Cavite,042113000,Maragondon,,municipality,40687,164.61,cph2020
+PH040100000,Cavite,042114000,Mendez,,municipality,34879,43.27,cph2020
+PH040100000,Cavite,042115000,Naic,,municipality,160987,75.81,cph2020
+PH040100000,Cavite,042116000,Noveleta,,municipality,49452,16.43,cph2020
+PH040100000,Cavite,042117000,Rosario,,municipality,110807,7.61,cph2020
+PH040100000,Cavite,042118000,Silang,,municipality,295644,209.43,cph2020
+PH040100000,Cavite,042119000,Tagaytay,,city,85330,65.0,cph2020
+PH040100000,Cavite,042120000,Tanza,,municipality,312116,78.33,cph2020
+PH040100000,Cavite,042121000,Ternate,,municipality,24653,59.93,cph2020
+PH040100000,Cavite,042122000,Trece Martires,,city,210503,39.1,cph2020
+PH040200000,Laguna,043401000,Alaminos,,municipality,51619,57.46,cph2020
+PH040200000,Laguna,043402000,Bay,,municipality,67182,42.66,cph2020
+PH040200000,Laguna,043403000,Biñan,Binan,city,407437,40.27,cph2020
+PH040200000,Laguna,043404000,Cabuyao,,city,355330,43.3,cph2020
+PH040200000,Laguna,043405000,Calamba,,city,539671,149.5,cph2020
+PH040200000,Laguna,043406000,Calauan,,municipality,87693,77.85,cph2020
+PH040200000,Laguna,043407000,Cavinti,,municipality,23980,203.58,cph2020
+PH040200000,Laguna,043408000,Famy,,municipality,16791,53.06,cph2020
+PH040200000,Laguna,043409000,Kalayaan,,municipality,24755,46.6,cph2020
+PH040200000,Laguna,043410000,Liliw,,municipality,39491,39.1,cph2020
+PH040200000,Laguna,043411000,Los Baños,Los Banos,municipality,115353,54.22,cph2020
+PH040200000,Laguna,043412000,Luisiana,,municipality,20859,73.31,cph2020
+PH040200000,Laguna,043413000,Lumban,,municipality,32330,40.53,cph2020
+PH040200000,Laguna,043414000,Mabitac,,municipality,21275,80.76,cph2020
+PH040200000,Laguna,043415000,Magdalena,,municipality,27816,35.0,cph2020
+PH040200000,Laguna,043416000,Majayjay,,municipality,27893,69.58,cph2020
+PH040200000,Laguna,043417000,Nagcarlan,,municipality,64866,78.1,cph2020
+PH040200000,Laguna,043418000,Paete,,municipality,24945,55.02,cph2020
+PH040200000,Laguna,043419000,Pagsanjan,,municipality,44327,27.4,cph2020
+PH040200000,Laguna,043420000,Pakil,,municipality,23495,46.5,cph2020
+PH040200000,Laguna,043421000,Pangil,,municipality,25026,45.03,cph2020
+PH040200000,Laguna,043422000,Pila,,municipality,54613,31.2,cph2020
+PH040200000,Laguna,043423000,Rizal,,municipality,18332,27.9,cph2020
+PH040200000,Laguna,043424000,San Pablo,,city,285348,197.56,cph2020
+PH040200000,Laguna,043425000,San Pedro,,city,326001,24.05,cph2020
+PH040200000,Laguna,043426000,Santa Cruz,Sta. Cruz|Sta Cruz,municipality,123574,38.59,cph2020
+PH040200000,Laguna,043427000,Santa Maria,Sta. Maria|Sta Maria,municipality,34511,108.4,cph2020
+PH040200000,Laguna,043428000,Santa Rosa,Sta. Rosa|Sta Rosa,city,414812,54.84,cph2020
+PH040200000,Laguna,043429000,Siniloan,,municipality,39460,64.51,cph2020
+PH040200000,Laguna,043430000,Victoria,,municipality,43408,22.35,cph2020
+PH040300000,Quezon,045601000,Agdangan,,municipality,12764,31.54,cph2020
+PH040300000,Quezon,045602000,Alabat,,municipality,15936,57.61,cph2020
+PH040300000,Quezon,045603000,Atimonan,,municipality,64260,239.66,cph2020
+PH040300000,Quezon,045605000,Buenavista,,municipality,31160,161.35,cph2020
+PH040300000,Quezon,045606000,Burdeos,,municipality,24644,199.82,cph2020
+PH040300000,Quezon,045607000,Calauag,,municipality,71809,324.71,cph2020
+PH040300000,Quezon,045608000,Candelaria,,municipality,137881,129.1,cph2020
+PH040300000,Quezon,045610000,Catanauan,,municipality,72752,253.07,cph2020
+PH040300000,Quezon,045615000,Dolores,,municipality,32514,62.6,cph2020
+PH040300000,Quezon,045616000,General Luna,Gen. Luna,municipality,24804,101.02,cph2020
+PH040300000,Quezon,045617000,General Nakar,Gen. Nakar,municipality,34225,1343.75,cph2020
+PH040300000,Quezon,045618000,Guinayangan,,municipality,44045,214.12,cph2020
+PH040300000,Quezon,045619000,Gumaca,,municipality,71942,189.65,cph2020
+PH040300000,Quezon,045620000,Infanta,,municipality,76186,342.76,cph2020
+PH040300000,Quezon,045621000,Jomalig,,municipality,7667,53.93,cph2020
+PH040300000,Quezon,045622000,Lopez,,municipality,94657,355.38,cph2020
+PH040300000,Quezon,045623000,Lucban,,municipality,53091,130.46,cph2020
+PH040300000,Quezon,045624000,Lucena,,city,278924,71.55,cph2020
+PH040300000,Quezon,045625000,Macalelon,,municipality,27312,124.05,cph2020
+PH040300000,Quezon,045627000,Mauban,,municipality,71081,415.98,cph2020
+PH040300000,Quezon,045628000,Mulanay,,municipality,55576,420.0,cph2020
+PH040300000,Quezon,045629000,Padre Burgos,Pdre. Burgos,municipality,23488,69.1,cph2020
+PH040300000,Quezon,045630000,Pagbilao,,municipality,78700,170.96,cph2020
+PH040300000,Quezon,045631000,Panukulan,,municipality,16376,226.61,cph2020
+PH040300000,Quezon,045632000,Patnanungan,,municipality,15052,139.2,cph2020
+PH040300000,Quezon,045633000,Perez,,municipality,12767,57.46,cph2020
+PH040300000,Quezon,045634000,Pitogo,,municipality,22798,73.39,cph2020
+PH040300000,Quezon,045635000,Plaridel,,municipality,10129,18.19,cph2020
+PH040300000,Quezon,045636000,Polillo,,municipality,31908,253.0,cph2020
+PH040300000,Quezon,045637000,Quezon,,municipality,15886,71.22,cph2020
+PH040300000,Quezon,045638000,Real,,municipality,38678,337.92,cph2020
+PH040300000,Quezon,045639000,Sampaloc,,municipality,13629,104.78,cph2020
+PH040300000,Quezon,045640000,San Andres,,municipality,37454,172.93,cph2020
+PH040300000,Quezon,045641000,San Antonio,,municipality,35891,60.99,cph2020
+PH040300000,Quezon,045642000,San Francisco,,municipality,62097,303.96,cph2020
+PH040300000,Quezon,045644000,San Narciso,,municipality,51058,263.58,cph2020
+PH040300000,Quezon,045645000,Sariaya,,municipality,161868,212.16,cph2020
+PH040300000,Quezon,045646000,Tagkawayan,,municipality,54003,534.35,cph2020
+PH040300000,Quezon,045647000,Tayabas,,city,112658,230.95,cph2020
+PH040300000,Quezon,045648000,Tiaong,,municipality,106265,168.38,cph2020
+PH040300000,Quezon,045649000,Unisan,,municipality,25448,124.15,cph2020
+PH040400000,Rizal,045801000,Angono,,municipality,130494,26.22,cph2020
+PH040400000,Rizal,045802000,Antipolo,,city,887399,306.1,cph2020
+PH040400000,Rizal,045803000,Baras,,municipality,87637,84.93,cph2020
+PH040400000,Rizal,045804000,Binangonan,,municipality,313631,66.34,cph2020
+PH040400000,Rizal,045805000,Cainta,,municipality,376933,42.99,cph2020
+PH040400000,Rizal,045806000,Cardona,,municipality,50143,19.27,cph2020
+PH040400000,Rizal,045807000,Jala-Jala,Jalajala|Jala Jala,municipality,34017,44.12,cph2020
+PH040400000,Rizal,045809000,Morong,,municipality,71151,37.58,cph2020
+PH040400000,Rizal,045810000,Pililla,,municipality,71535,69.95,cph2020
+PH040400000,Rizal,045808000,Rodriguez,,municipality,443954,172.65,cph2020
+PH040400000,Rizal,045811000,San Mateo,,municipality,273306,55.09,cph2020
+PH040400000,Rizal,045812000,Tanay,,municipality,139420,200.0,cph2020
+PH040400000,Rizal,045813000,Taytay,,municipality,386451,38.8,cph2020
+PH040400000,Rizal,045814000,Teresa,,municipality,64072,18.61,cph2020

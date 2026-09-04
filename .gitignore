@@ -6,3 +6,7 @@ backend/data/reference/*.geojson
 
 # Local backups taken before destructive rebuilds; regenerable, not history
 backend/data/archive/
+
+# Relevance-gate labelling sample: regenerable from the scripts, and the
+# workbook is a working file that changes on every save.
+backend/data/processed/relevance_eval/

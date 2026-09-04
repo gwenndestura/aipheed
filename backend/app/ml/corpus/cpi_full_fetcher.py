@@ -179,7 +179,18 @@ def fetch_cpi_full(start_year: int = 2020, end_year: int = 2025) -> pd.DataFrame
     mdf["cpi_food_yoy_pct"] = mdf["cpi_food_nab"].pct_change(periods=12) * 100
     mdf["cpi_food_minus_general_yoy"] = mdf["cpi_food_yoy_pct"] - mdf["cpi_all_yoy_pct"]
     mdf["cpi_food_share"] = mdf["cpi_food_nab"] / mdf["cpi_all_items"]
-    mdf["quarter"] = mdf.apply(lambda r: f"{r['year']}-Q{(r['month']-1)//3+1}", axis=1)
+    # A period the month map does not resolve (the "Ave" annual column) leaves a
+    # null month, which turns year/month float and formats the label as
+    # "2020.0-Q1.0". Drop those rows and pin the types before building the label.
+    mdf = mdf[mdf["year"].notna() & mdf["month"].notna()].copy()
+    mdf["year"] = mdf["year"].astype(int)
+    mdf["month"] = mdf["month"].astype(int)
+    # Built column-wise, NOT with apply(axis=1): apply hands each row to the
+    # lambda as a Series, and because this frame holds float CPI columns that
+    # Series is float throughout -- so an int year formatted as "2020.0" and
+    # the label came out "2020.0-Q1.0".
+    mdf["quarter"] = (mdf["year"].astype(str) + "-Q"
+                      + ((mdf["month"] - 1) // 3 + 1).astype(str))
 
     # Aggregate to quarterly mean, restrict to start_year..end_year
     qdf = mdf.groupby(["year", "quarter"], as_index=False).agg({
@@ -190,7 +201,17 @@ def fetch_cpi_full(start_year: int = 2020, end_year: int = 2025) -> pd.DataFrame
         "cpi_food_yoy_pct": "mean",
         "cpi_food_minus_general_yoy": "mean",
         "cpi_food_share": "mean",
-    })
+        "month": "nunique",
+    }).rename(columns={"month": "n_months"})
+
+    # Whole quarters only. The current year is partially published, and a
+    # quarter averaged from one or two months is not comparable to the
+    # three-month means every other row carries.
+    partial = qdf[qdf["n_months"] < 3]
+    if not partial.empty:
+        logger.info("dropping %d partial quarter(s): %s",
+                    len(partial), partial["quarter"].tolist())
+    qdf = qdf[qdf["n_months"] == 3].drop(columns=["n_months"])
     qdf = qdf[(qdf["year"] >= start_year) & (qdf["year"] <= end_year)].reset_index(drop=True)
 
     # Cross-join to provinces

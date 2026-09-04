@@ -132,7 +132,7 @@ class DriverRecord(BaseModel):
     # Raw group key: market | climate | employment | macro_ofw | nlp_sentiment
     driver_group: str
 
-    # Human-readable label shown on the dashboard (e.g. "Market / Prices")
+    # Human-readable label shown on the dashboard (e.g. "Food Prices")
     driver_label: str
 
     # Net SHAP contribution of the group (probability scale, e.g. +0.35)

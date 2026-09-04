@@ -74,6 +74,66 @@ HYPOTHESES: dict[str, str] = {
     "T9":  "This article is about overseas Filipino workers or remittances supporting families",
 }
 
+# ── Relevance gate: CORE food hypotheses only (deviation, kept per decision) ─
+# max-over-ALL-10 had poor precision even at high scores: an RFID toll-gate
+# article scored 0.98 via the indirect-proxy hypotheses (T5 transport, T7
+# displacement, T8 unrest, T9 OFW, and broad T4 poverty) firing on surface
+# topic while ignoring the food qualifier; max then let one spurious match
+# dominate, and no threshold could remove it. An article is now judged
+# food-insecurity-relevant only if it entails a CORE food hypothesis
+# (prices/supply, hunger/nutrition, food aid, crops, fish). The five indirect
+# dimensions are still scored and kept in all_scores as causal-driver context
+# (they still drive trigger classification), but do not establish relevance
+# on their own. relevance score = max P(entailment) over CORE.
+CORE_TOPIC_IDS: tuple[str, ...] = ("T1", "T2", "T3", "T6", "T1b")
+
+# ── Discrimination margin (added 2026-09-02 after measurement) ──────────────
+# Restricting to CORE narrowed the failure but did not close it. The model
+# intermittently collapses into entailing EVERY hypothesis at once: on a
+# Metrobank ATM press release all ten scored >=0.89, "fish kills" beat
+# "hunger" by 0.0002, and the article was published as fisheries evidence. The
+# score was the argmax of noise, and no absolute threshold removes it -- that
+# article scores 0.9943 while a real fish-kill story scores 0.21.
+#
+# The gate is therefore relative: the best food reading must beat the best
+# off-topic reading by this margin. When everything fires, the margin is ~0
+# and the article is rejected however high its raw score.
+#
+# Chosen by measurement, not by eye. On a 250-article sample (150 stratified
+# from the published corpus, 100 from the pre-classification pool so recall is
+# measurable), against hand labels:
+#
+#     gate                 precision  recall     F1
+#     margin >= 0.20         0.880    0.750    0.810   <- selected
+#     noncore_max < 0.80     0.765    0.815    0.789
+#     margin >= 0.40         0.936    0.676    0.785
+#     score  >= 0.30 (old)   0.667    0.852    0.748
+#     score  >= 0.90         0.789    0.417    0.545
+#
+# Every stricter absolute threshold scored WORSE than the old gate. Reproduce
+# with scripts/build_relevance_sample.py + scripts/evaluate_relevance_gates.py.
+RELEVANCE_MARGIN = 0.20
+
+# ── Premise window ─────────────────────────────────────────────────────────
+# How much of the article the model sees. Was 512 characters; measurement on
+# the same labelled sample put 250 ahead on every headline figure:
+#
+#     premise      gate            precision  recall     F1
+#     title+250    margin>=0.20      0.920    0.750    0.827   <- selected
+#     full 512     margin>=0.20      0.880    0.750    0.810
+#     full 512     score >=0.30      0.667    0.852    0.748   (old behaviour)
+#
+# NOT because a short premise fixes the entailment collapse -- it does not.
+# Recall on articles longer than 350 characters stays at 0.15-0.20 whatever the
+# window, against 0.70 for the old gate -- and the old gate reached that only
+# by keeping nearly everything long, at 0.304 precision on that band. Long wire
+# copy appears to be past what this zero-shot setup can read. The window is set
+# where the measurements are best and the weakness is recorded, not hidden.
+#
+# Side benefit: a 250-character premise costs roughly a quarter of the
+# attention of 512, which is what makes a full corpus rescore practical.
+PREMISE_CHARS = 250
+
 # Whether to prefer keyword fallback (set AIPHEED_USE_KEYWORD_SCORER=1 in .env)
 _USE_KEYWORD_FALLBACK = os.getenv("AIPHEED_USE_KEYWORD_SCORER", "0").strip() == "1"
 
@@ -131,6 +191,11 @@ def _keyword_score_article(title: str, summary: str) -> dict:
         "is_relevant": best_score >= RELEVANCE_THRESHOLD,
         "top_hypothesis": f"{best_topic}_keyword",
         "top_topic_name": f"{HYPOTHESES.get(best_topic, best_topic)} [keyword]",
+        # The margin gate is meaningless for keyword counts -- there is no
+        # entailment distribution to be degenerate. Reported as None so a
+        # consumer can tell "not applicable" from "measured as zero".
+        "noncore_max": None,
+        "relevance_margin": None,
         "all_scores": {k: round(v, 4) for k, v in scores.items()},
     }
 
@@ -257,8 +322,9 @@ def score_article(clf: Any, title: str, summary: str) -> dict:
     if isinstance(clf, _KeywordClassifier):
         return _keyword_score_article(title, summary)
 
-    # XLM-RoBERTa path
-    text = f"{title}. {summary}"[:512]  # truncate to model context window
+    # XLM-RoBERTa path. The window is PREMISE_CHARS, not the model's context
+    # limit: measurement, not capacity, sets it (see PREMISE_CHARS).
+    text = f"{title}. {summary}"[:PREMISE_CHARS]
     try:
         raw = clf.classify(text)
     except Exception as exc:
@@ -270,13 +336,31 @@ def score_article(clf: Any, title: str, summary: str) -> dict:
     if not scores:
         return _keyword_score_article(title, summary)
 
-    best_topic = max(scores, key=lambda k: scores[k])
+    # Relevance is gated on the CORE food hypotheses (see CORE_TOPIC_IDS):
+    # food_insecurity_score = max P(entailment) over the core dimensions. The
+    # indirect-proxy dimensions stay in all_scores as driver context but do
+    # not establish relevance alone.
+    core = {k: v for k, v in scores.items() if k in CORE_TOPIC_IDS}
+    noncore = {k: v for k, v in scores.items() if k not in CORE_TOPIC_IDS}
+    best_topic = max(core, key=lambda k: core[k]) if core else max(scores, key=lambda k: scores[k])
     best_score = scores[best_topic]
+
+    # How far the food reading beats the best off-topic one. Near zero means
+    # the model entailed everything and picked a winner out of noise.
+    noncore_max = max(noncore.values()) if noncore else 0.0
+    margin = best_score - noncore_max
 
     return {
         "food_insecurity_score": round(best_score, 4),
-        "is_relevant": best_score >= RELEVANCE_THRESHOLD,
+        "is_relevant": bool(
+            best_score >= RELEVANCE_THRESHOLD and margin >= RELEVANCE_MARGIN
+        ),
         "top_hypothesis": best_topic,
         "top_topic_name": HYPOTHESES.get(best_topic, best_topic),
+        # Persisted so a future gate can be re-evaluated from stored output
+        # instead of re-running the model over the whole corpus, which is what
+        # this change cost the first time.
+        "noncore_max": round(noncore_max, 4),
+        "relevance_margin": round(margin, 4),
         "all_scores": {k: round(v, 4) for k, v in scores.items()},
     }

@@ -366,12 +366,24 @@ DRIVER_GROUP_FEATURES: dict[str, list[str]] = {
 }
 
 # Dashboard display labels for each group
+# Each label must survive a reader checking it against the feature list above.
+# Two of the previous names did not:
+#
+#   "OFW Remittance"     was half diesel price. A rising bar reads as
+#                        remittances falling when it may be fuel.
+#   "Food Stress Signal" counts news ARTICLES, not stress. Heavy coverage
+#                        after a typhoon is more reporting, not more hunger --
+#                        and this corpus was ~88% noise at province level.
+#
+# "Employment" also overstated a single feature (last quarter's unemployment
+# rate), and the two model-dynamics groups were named like filler when they
+# carry most of the explanation and deserve to state what they are.
 DRIVER_GROUP_LABELS: dict[str, str] = {
-    "market":        "Market / Prices",
-    "climate":       "Climate Stress",
-    "employment":    "Employment",
-    "macro_ofw":     "OFW Remittance",
-    "nlp_sentiment": "Food Stress Signal",
-    "series_history": "Recent History",
-    "seasonal":       "Seasonal Pattern",
+    "market":         "Food Prices",            # CPI, rice, produce, livestock
+    "climate":        "Weather & Typhoons",     # typhoons, rainfall, drought, ENSO
+    "employment":     "Unemployment",           # one feature: unemployment rate
+    "macro_ofw":      "Fuel & Remittances",     # diesel price + OFW remittances
+    "nlp_sentiment":  "News Coverage",          # FSSI and article counts
+    "series_history": "Recent Shortfalls",      # this series, last 1-2 quarters
+    "seasonal":       "Normal Seasonal Cycle",  # same quarter last year, volatility
 }

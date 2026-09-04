@@ -97,7 +97,18 @@ def build_matched_news() -> pd.DataFrame:
     return out.merge(tot, on=["province_code", "quarter"], how="outer")
 
 
-def load() -> pd.DataFrame:
+def load(feature_lag: int = 0) -> pd.DataFrame:
+    """
+    Build the modelling frame.
+
+    feature_lag=0 (default) joins the government/climate feature matrix on the
+    same quarter as the row being modelled -- the nowcast specification.
+
+    feature_lag=1 joins it on the PREVIOUS quarter, which is what the forecast
+    variant needs: a quarter can then be scored from information that already
+    existed before it began, and coverage reaches one quarter past the feature
+    matrix's own edge.
+    """
     panel = pd.read_parquet(PANEL)
     feats = pd.read_parquet(FEATURES)
 
@@ -146,6 +157,15 @@ def load() -> pd.DataFrame:
     panel["total_articles"] = panel["total_articles"].fillna(0.0)
     panel = panel.sort_values(key + ["year", "quarter_num"]).reset_index(drop=True)
     panel["matched_lag1"] = panel.groupby(key)["matched_articles"].shift(1).fillna(0.0)
+
+    if feature_lag:
+        # Attach features from `feature_lag` quarters earlier by relabelling the
+        # feature matrix forward, so quarter Q carries the values observed at
+        # Q-lag. Panel rows past the feature edge become scoreable.
+        shifted = feats.copy()
+        idx = shifted["quarter"].str[:4].astype(int) * 4 +             shifted["quarter"].str[-1].astype(int) - 1 + feature_lag
+        shifted["quarter"] = (idx // 4).astype(str) + "-Q" + (idx % 4 + 1).astype(str)
+        feats = shifted
 
     df = panel.merge(feats, on=["province_code", "quarter"], how="inner")
     df = df.sort_values(["quarter", "group", "commodity", "province_code"]).reset_index(drop=True)

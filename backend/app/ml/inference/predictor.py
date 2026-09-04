@@ -304,6 +304,21 @@ class Predictor:
 
         return alerts
 
+    def available_quarters(self) -> list[str]:
+        """
+        Quarters the model can actually score, oldest first.
+
+        The panel is the binding constraint, not the calendar: a quarter is
+        scorable only once PSA has published its production volumes and the
+        feature merge has kept the row. Callers use this to decide what the
+        timeline may offer rather than assuming the current calendar quarter
+        is available.
+        """
+        self.load()
+        if self._panel is None:
+            return []
+        return sorted(self._panel["quarter"].unique().tolist())
+
     def forecast_all_quarters(self) -> list[dict]:
         """Forecast all quarters present in the feature matrix."""
         self.load()
