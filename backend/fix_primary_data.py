@@ -5,7 +5,7 @@ One-shot script that fixes all three primary-data issues:
 
   Fix 1 — cpi_full quarter format:   "2020.0-Q1.0" → "2020-Q1"
   Fix 2 — commodity_prices 2022-25:  forward-fill from 2021 with CPI inflation
-  Fix 3 — lgu_census / lgu_poverty:  expand 35 → 137 LGUs (full CALABARZON set)
+  Fix 3 — lgu_census / lgu_poverty:  all 142 LGUs (full CALABARZON set)
 
 Run from backend/:
     python fix_primary_data.py
@@ -103,7 +103,8 @@ def fix_commodity_prices():
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# FIX 3 — lgu_census: expand to 137 LGUs (full CALABARZON CPH 2020 set)
+# FIX 3 — legacy 137-LGU fallback table (superseded by
+#   data/reference/calabarzon_lgus.csv, which carries all 142)
 # Province code mapping (consistent with psa_indicators.parquet):
 #   PH040100000 = Cavite   PH040200000 = Laguna   PH040300000 = Quezon
 #   PH040400000 = Rizal    PH040500000 = Batangas
@@ -308,6 +309,44 @@ def _normalize(df: pd.DataFrame, col: str, new_col: str) -> pd.DataFrame:
 
 
 def fix_lgu_census():
+    """
+    Build lgu_census.parquet for all 142 CALABARZON LGUs.
+
+    Delegates to app.ml.corpus.lgu_census_fetcher, which reads the canonical
+    roster at data/reference/calabarzon_lgus.csv. The FULL_LGUS list below is
+    kept only as an emergency fallback: it holds 137 LGUs (it predates Taal,
+    Talisay, Mauban, Pagbilao and the municipality of Quezon being added) and
+    assigns hash-derived placeholder codes instead of real PSGC ones, so it
+    must not be the path that normally runs.
+    """
+    from app.ml.corpus.lgu_census_fetcher import EXPECTED_LGU_COUNT, fetch_lgu_census
+
+    try:
+        df = fetch_lgu_census()
+    except Exception as exc:                      # noqa: BLE001 — fall back loudly
+        log.error("lgu_census_fetcher failed (%s); falling back to the legacy "
+                  "%d-LGU list. Rebuild the roster with "
+                  "`python scripts/build_lgu_reference.py`.", exc, len(FULL_LGUS))
+        df = _legacy_lgu_census()
+
+    if len(df) != EXPECTED_LGU_COUNT:
+        log.error("lgu_census has %d LGUs, expected %d — the region is "
+                  "incomplete. Run `python scripts/build_lgu_reference.py`.",
+                  len(df), EXPECTED_LGU_COUNT)
+
+    path = PROCESSED / "lgu_census.parquet"
+    df.to_parquet(path, index=False)
+    log.info(
+        "Fix 3a lgu_census: %d LGUs across %d provinces",
+        len(df), df["province_code"].nunique(),
+    )
+    for prov, grp in df.groupby("province_name"):
+        log.info("  %s: %d LGUs", prov, len(grp))
+    return df
+
+
+def _legacy_lgu_census():
+    """Hardcoded 137-LGU fallback. Incomplete — see fix_lgu_census."""
     out_rows = []
     for prov_code, lgu_name, lgu_type, pop, area in FULL_LGUS:
         density = pop / area if area > 0 else 0.0
@@ -324,18 +363,7 @@ def fix_lgu_census():
             "source_url":      SOURCE_CENSUS,
             "fetched_at":      NOW,
         })
-
-    df = pd.DataFrame(out_rows)
-    df = _normalize(df, "density_per_km2", "density_normalized")
-    path = PROCESSED / "lgu_census.parquet"
-    df.to_parquet(path, index=False)
-    log.info(
-        "Fix 3a lgu_census: %d LGUs across %d provinces",
-        len(df), df["province_code"].nunique(),
-    )
-    for prov, grp in df.groupby("province_name"):
-        log.info("  %s: %d LGUs", prov, len(grp))
-    return df
+    return _normalize(pd.DataFrame(out_rows), "density_per_km2", "density_normalized")
 
 
 def fix_lgu_poverty(census_df: pd.DataFrame):
@@ -385,7 +413,7 @@ if __name__ == "__main__":
     fix_commodity_prices()
 
     log.info("=" * 55)
-    log.info("Fix 3: lgu_census + lgu_poverty (35 → 137 LGUs)")
+    log.info("Fix 3: lgu_census + lgu_poverty (142 LGUs)")
     census_df = fix_lgu_census()
     fix_lgu_poverty(census_df)
 

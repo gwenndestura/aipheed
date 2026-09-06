@@ -140,29 +140,17 @@ def dimension_evidence(top_hyp: str, raw: str):
     return True, matched[0]
 
 
-# ── Authoritative CALABARZON gazetteer (all 137 LGUs) from the PSA LGU census ─
+# ── Authoritative CALABARZON gazetteer (all 142 LGUs) from the PSA LGU census ─
 CAL_CODE_NAME = {
     "PH040100000": "Cavite", "PH040200000": "Laguna", "PH040300000": "Quezon",
     "PH040400000": "Rizal", "PH040500000": "Batangas",
 }
 
-
-def load_cal_lgus() -> dict:
-    """Return {lgu_name_lower: province_name} for every CALABARZON city/municipality."""
-    p = ROOT / "data" / "processed" / "lgu_census.parquet"
-    d = pd.read_parquet(p)
-    return {str(n).lower(): str(pr) for n, pr in zip(d["lgu_name"], d["province_name"])}
-
-
-# LGU names that collide with well-known places elsewhere in PH — only accept
-# these as CALABARZON evidence when the province name co-occurs.
-AMBIGUOUS_LGU = {
-    "rizal", "san juan", "san pedro", "san pablo", "santa cruz", "sta. cruz",
-    "san jose", "san antonio", "san francisco", "santa maria", "santa rosa",
-    "rosario", "victoria", "san andres", "san narciso", "general luna",
-    "san isidro", "santo tomas", "real", "mabini", "quezon", "candelaria",
-    "dolores", "san nicolas", "magsaysay",
-}
+# Matcher construction, the ambiguous-name list and the alias handling all live
+# in reanalyze_lib so that this script and reanalyze_calabarzon.py cannot drift
+# apart. See reanalyze_lib.build_lgu_matchers for the demote-never-drop rule
+# that keeps all 142 LGUs reachable.
+AMBIGUOUS_LGU = R.AMBIGUOUS_LGU
 
 # Expanded non-CALABARZON location gazetteer for conflict detection (adds the
 # cities that slipped through the audit: Mandaue, Lapu-Lapu, Banilad = Cebu…).
@@ -196,32 +184,27 @@ def build_summary_map() -> dict:
     return dict(zip(sm["article_id"], sm["summary"].astype(str)))
 
 
-def cal_place_in_text(norm: str, unambig_re, ambig_lgus: dict) -> tuple[bool, str, str]:
+def cal_place_in_text(norm: str, matchers: dict) -> tuple[bool, str, str]:
     """
     Does the (normalised) title+lead name a CALABARZON place?
-    Uses the full 137-LGU gazetteer. Returns (found, province, city).
+    Uses the full 142-LGU gazetteer. Returns (found, province, city).
       - unambiguous LGU name  -> found, its province
       - province-level token (Cavite/Batangas/Laguna, Quezon/Rizal province,
         CALABARZON alias) via reanalyze_lib disambiguation
       - ambiguous LGU name (San Pedro, Rizal town…) only if its province
         name co-occurs in the text
     """
-    m = unambig_re.search(norm) if unambig_re else None
-    if m:
-        city = m.group(0)
-        return True, ambig_lgus["_unambig"][city], city.title()
+    found, prov, city = R.match_cal_lgu(norm, matchers)
+    if found:
+        return True, prov, city
 
     g = R.geo_classify(norm, None)
     if g["geo_level"] in ("strong", "region"):
         return True, g["province"], g["city"]
-
-    for name, prov in ambig_lgus["_ambig"].items():
-        if re.search(rf"(?<![a-z]){re.escape(name)}(?![a-z])", norm) and prov.lower() in norm:
-            return True, prov, name.title()
     return False, "", ""
 
 
-def evaluate(df: pd.DataFrame, smap: dict, unambig_re, lgu_index: dict) -> pd.DataFrame:
+def evaluate(df: pd.DataFrame, smap: dict, matchers: dict) -> pd.DataFrame:
     """Add gate columns to the HIGH/MEDIUM candidate rows."""
     rows = []
     for r in df.itertuples():
@@ -233,7 +216,7 @@ def evaluate(df: pd.DataFrame, smap: dict, unambig_re, lgu_index: dict) -> pd.Da
         food_ok = bool(FOOD_ANCHOR.search(raw))
         dim_ok, eff_hyp = dimension_evidence(getattr(r, "top_hypothesis", None), raw)
 
-        has_cal_token, cal_prov, cal_city = cal_place_in_text(norm, unambig_re, lgu_index)
+        has_cal_token, cal_prov, cal_city = cal_place_in_text(norm, matchers)
         has_other = bool(OTHER_LOC.search(raw))
         prior_prov = getattr(r, "province", None)
         prior_ok = isinstance(prior_prov, str) and prior_prov not in ("", "None")
@@ -290,16 +273,10 @@ def main() -> None:
     smap = build_summary_map()
 
     # Build the CALABARZON LGU matchers from the authoritative PSA census.
-    lgus = load_cal_lgus()
-    unambig = {n: p for n, p in lgus.items()
-               if n not in AMBIGUOUS_LGU and len(n) >= 5}
-    ambig = {n: p for n, p in lgus.items() if n in AMBIGUOUS_LGU}
-    lgu_index = {"_unambig": {_norm(n): p for n, p in unambig.items()},
-                 "_ambig": {_norm(n): p for n, p in ambig.items()}}
-    parts = sorted((re.escape(_norm(n)) for n in unambig), key=len, reverse=True)
-    unambig_re = re.compile(r"(?<![a-z])(" + "|".join(parts) + r")(?![a-z])")
-    print(f"gazetteer: {len(lgus)} CALABARZON LGUs "
-          f"({len(unambig)} unambiguous, {len(ambig)} require province cue)\n")
+    matchers = R.build_lgu_matchers(str(ROOT / "data/processed/lgu_census.parquet"))
+    n_un, n_am = len(matchers["unambig"]), len(matchers["ambig"])
+    print(f"gazetteer: {n_un + n_am} CALABARZON LGU names "
+          f"({n_un} unambiguous, {n_am} require province cue)\n")
 
     # BEFORE = the pipeline's retained set (HIGH/MEDIUM, CALABARZON, deduped),
     # reproduced from progress with the same rule the pipeline used.
@@ -312,7 +289,7 @@ def main() -> None:
                    .str.replace(r"[^a-z0-9 ]", "", regex=True).str.strip())
     cand = cand[~(cand["_nt"].duplicated(keep="first") & (cand["_nt"].str.len() > 0))]
 
-    ev = evaluate(cand, smap, unambig_re, lgu_index)
+    ev = evaluate(cand, smap, matchers)
     precise = ev[ev["precise_retained"]].copy()
     dropped = ev[~ev["precise_retained"]].copy()
 

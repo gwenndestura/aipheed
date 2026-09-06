@@ -337,17 +337,26 @@ def merge_national() -> None:
         return
 
     txt = (new["title"].fillna("") + " " + new["summary"].fillna("")).astype(str)
-    # The CALABARZON link must be explicit in the article itself.
-    calzn = txt.map(lambda t: bool(re.search(r"\b(calabarzon|region iv-?a)\b", t, re.I))
-                    or bool(re.search(PROV, t, re.I)))
-    ph = txt.map(lambda t: bool(re.search(r"\b(philippine|nationwide|national|"
-                                          r"across the country|\bDA\b|\bDTI\b|\bPSA\b|"
-                                          r"\bNFA\b|Malaca[nñ]ang)\b", t, re.I)))
-    keep = (calzn & ph
+    ttl = new["title"].fillna("").astype(str)
+    # Philippine national context. CALABARZON is part of the Philippines, so a
+    # nationwide food-price / rice-policy / inflation story is a real driver of
+    # CALABARZON household food access even when the region is not named — it is
+    # kept at national scope, never attributed to a province.
+    ph = txt.map(lambda t: bool(re.search(
+        r"\b(philippine|pilipinas|nationwide|national|across the country|"
+        r"\bDA\b|\bDTI\b|\bPSA\b|\bNFA\b|\bDSWD\b|Malaca[nñ]ang|Marcos|palace|"
+        r"senate|house (panel|of representatives)|congress|government)\b", t, re.I)))
+    # ...but not when another specific region/locality is the story's subject.
+    other_region = ttl.map(lambda t: bool(re.search(
+        r"\b(manila bay|metro manila|quezon city|\bNCR\b|ilocos|benguet|baguio|"
+        r"cagayan|isabela|pangasinan|zambales|bataan|bulacan|pampanga|tarlac|"
+        r"nueva ecija|bicol|visayas|mindanao|cebu|davao|iloilo|bacolod|negros|"
+        r"zamboanga|samar|leyte|bohol|palawan|mimaropa|caraga|soccsksargen)\b", t, re.I)))
+    keep = (ph & ~other_region
             & ~txt.map(lambda t: bool(FOREIGN.search(t)))
-            & ~txt.map(lambda t: bool(re.search(
-                r"\b(indonesia|vietnam|thailand|india|bangladesh|malaysia|"
-                r"mexic|california|nigeria)\b", t, re.I))))
+            & ~ttl.map(lambda t: bool(re.search(
+                r"\b(indonesia|vietnam|thailand|india|bangladesh|malaysia|china|"
+                r"mexic|california|nigeria|ukraine|global)\b", t, re.I))))
     new = new[keep].copy()
     if len(new):
         btxt = (new["title"].fillna("") + " " + new["summary"].fillna("")).astype(str)
