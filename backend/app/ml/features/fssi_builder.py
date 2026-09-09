@@ -202,9 +202,13 @@ def build_fssi_from_parquets(
                 "Run sentiment.score_articles_df() first."
             )
 
-    # Filter to 2020-Q1 → 2025-Q4 model window
+    # Filter to the model window. Imported rather than re-typed: this filter
+    # and MODEL_QUARTERS drifted apart once before, silently truncating FSSI.
+    from app.ml.features.feature_matrix import MODEL_QUARTERS
+
     corpus_df = corpus_df[
-        corpus_df["quarter"].between("2020-Q1", "2025-Q4", inclusive="both")
+        corpus_df["quarter"].between(MODEL_QUARTERS[0], MODEL_QUARTERS[-1],
+                                     inclusive="both")
     ]
 
     return compute_fssi(corpus_df, weights_df, save_path=save_path)

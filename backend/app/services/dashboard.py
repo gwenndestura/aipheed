@@ -649,31 +649,61 @@ def model_performance(horizon: str = DEFAULT_HORIZON) -> dict:
     """
     Headline metrics with the baselines they must be quoted against.
 
-    Accuracy alone is misleading here: the majority class already scores 0.73
-    and seasonal persistence 0.81, so the skill margins travel with the number
+    Accuracy alone is misleading here: the majority class already scores 0.72
+    and seasonal persistence 0.79, so the skill margins travel with the number
     wherever it is displayed.
+
+    `precision`, `recall` and `f1` are for the SHOCK class -- of the
+    province-quarter-commodity cells flagged as a production shock, how many
+    were one, and of the real shocks, how many were caught. At a positive rate
+    near 0.29 those are the figures that describe alert quality. The
+    support-weighted averages across both classes are exposed separately under
+    `weightedAvg`, and the raw confusion counts under `confusion` so any of
+    these can be recomputed.
     """
     path = Path("data/processed") / HORIZON_INFO[horizon]["resultsFile"]
     if not path.exists():
         return {}
     results = json.loads(path.read_text())
     op = results.get("operating", {})
+
+    # A metric absent from the results file is reported as null, never as 0.0 --
+    # a displayed precision of 0.0000 reads as "the model flags nothing
+    # correctly" rather than "this results file predates the metric".
+    def _m(key: str) -> float | None:
+        v = op.get(key)
+        return round(v, 4) if isinstance(v, (int, float)) else None
+
     return {
         "horizon": horizon,
         "evaluation": "operating set (>=12 quarters history, 90% coverage, mature folds)",
         "n": op.get("n"),
-        "accuracy": round(op.get("accuracy", 0), 4),
-        "f1": round(op.get("f1", 0), 4),
-        "rocAuc": round(op.get("roc_auc", 0), 4),
+        "accuracy": _m("accuracy"),
+        # Precision, recall and F1 for the SHOCK class. The positive rate is
+        # about 0.29, so the weighted averages (also exposed, below) are lifted
+        # by the easy majority class and say little about alert quality.
+        "precision": _m("precision_shock"),
+        "recall": _m("recall_shock"),
+        "f1": _m("f1_shock"),
+        "weightedAvg": {
+            "precision": _m("precision_weighted"),
+            "recall": _m("recall_weighted"),
+            "f1": _m("f1_weighted"),
+        },
+        "confusion": {
+            "tp": op.get("tp"), "fp": op.get("fp"),
+            "fn": op.get("fn"), "tn": op.get("tn"),
+        },
+        "rocAuc": _m("roc_auc"),
         "baselines": {
-            "majorityClass": round(op.get("majority_class", 0), 4),
-            "seasonalPersistence": round(op.get("seasonal_persistence", 0), 4),
-            "naivePersistence": round(op.get("naive_persistence", 0), 4),
+            "majorityClass": _m("majority_class"),
+            "seasonalPersistence": _m("seasonal_persistence"),
+            "naivePersistence": _m("naive_persistence"),
         },
         "skill": {
-            "vsMajority": round(op.get("skill_vs_majority", 0), 4),
-            "vsSeasonal": round(op.get("skill_vs_seasonal", 0), 4),
-            "vsNaive": round(op.get("skill_vs_naive", 0), 4),
+            "vsMajority": _m("skill_vs_majority"),
+            "vsSeasonal": _m("skill_vs_seasonal"),
+            "vsNaive": _m("skill_vs_naive"),
         },
         "abstainPct": results.get("operating_spec", {}).get("abstain_pct"),
     }

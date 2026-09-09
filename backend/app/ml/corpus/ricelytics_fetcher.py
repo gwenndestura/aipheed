@@ -1,6 +1,27 @@
 """
 app/ml/corpus/ricelytics_fetcher.py
 ------------------------------------
+SUPERSEDED 2026-09-09 -- NOT part of the live pipeline. Do not re-enable
+without reading this note.
+
+rice_price_regular now comes from app/ml/corpus/psa_rice_fetcher.py, which
+pulls PSA OpenStat wholesale Regular Milled Rice prices live for the whole
+2021-present window. This module is retained only as a record of the previous
+approach.
+
+Two reasons it was replaced:
+
+  1. Its declared window started at 2022, so 2021 had no rice price at all --
+     which mattered once training was moved back to start in 2021.
+  2. Despite the name it did not reliably fetch: the Ricelytics request falls
+     through to CALABARZON_RICE_FALLBACK, a curated table ending at 2025-Q4,
+     so the series could not advance past that quarter.
+
+data/processed/ricelytics_prices.parquet is likewise stale. The live file is
+data/processed/psa_rice_prices.parquet.
+
+--- original module docstring follows ---
+
 PhilRice Ricelytics — provincial rice retail price fetcher.
 
 PURPOSE

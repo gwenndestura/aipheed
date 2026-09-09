@@ -70,6 +70,8 @@ from pathlib import Path
 
 import pandas as pd
 
+from app.ml.corpus._coverage import CuratedCoverageError, check_coverage  # noqa: F401
+
 logger = logging.getLogger(__name__)
 
 OUTPUT_PATH = Path("data/processed/sws_hunger.parquet")
@@ -129,7 +131,8 @@ SWS_BAL_LUZON_VERIFIED = [
     (2025, "Q4", 16.7, 12.7, 4.0, "November 2025 SWS Survey",
      "https://sws.org.ph/social-weather-report-hunger-rises-from-20-1-in-november-2025-"
      "to-23-2-in-march-2026/"),
-    # Outside the 2020-2025 model window; retained for continuity.
+    # These were previously excluded by a default end_year of 2025 while the
+    # model window ran to 2026-Q2 -- verified data sitting unused.
     (2026, "Q1", 22.4, 16.6, 5.8, "March 2026 SWS Survey",
      "https://sws.org.ph/social-weather-report-hunger-rises-from-20-1-in-november-2025-"
      "to-23-2-in-march-2026/"),
@@ -189,7 +192,12 @@ SOURCE_NOTE = ("SWS quarterly Hunger Survey, Balance of Luzon stratum. "
                "ADB PH Country Strategy as canonical quarterly hunger indicator.")
 
 
-def fetch_sws_hunger(start_year: int = 2020, end_year: int = 2025) -> pd.DataFrame:
+SWS_COVERAGE_END = (2026, 2)
+
+
+def fetch_sws_hunger(start_year: int = 2021,
+                     end_year: int | None = None,
+                     strict: bool = True) -> pd.DataFrame:
     """
     Build the CALABARZON SWS Hunger panel from VERIFIED quarters only.
 
@@ -198,6 +206,16 @@ def fetch_sws_hunger(start_year: int = 2020, end_year: int = 2025) -> pd.DataFra
     Quarters with no published release are absent from the output entirely — they
     are never interpolated, projected, or carried forward.
     """
+    end_year = end_year or datetime.now(timezone.utc).year
+    check_coverage(
+        series="SWS hunger (Balance Luzon)",
+        coverage_end=SWS_COVERAGE_END, end_year=end_year,
+        reason="SWS publishes each round as a press release whose HTML layout "
+               "varies between releases, so it is not safely scrapeable.",
+        source_url="the release at sws.org.ph (SWS_BAL_LUZON_VERIFIED)",
+        extend_hint="raise SWS_COVERAGE_END",
+        strict=strict, logger=logger)
+
     fetched_at = datetime.now(timezone.utc).isoformat()
     rows = []
     for year, q, total, mod, sev, label, url in SWS_BAL_LUZON_VERIFIED:

@@ -27,7 +27,10 @@ import pandas as pd
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from app.ml.corpus.bias_weighter import compute_bias_weights  # noqa: E402
-from app.ml.features.feature_matrix import build_feature_matrix  # noqa: E402
+from app.ml.features.feature_matrix import (  # noqa: E402
+    MODEL_QUARTERS,
+    build_feature_matrix,
+)
 from app.ml.features.fssi_builder import compute_fssi  # noqa: E402
 from app.ml.nlp.trigger_classifier import (  # noqa: E402
     classify_triggers_df,
@@ -41,7 +44,9 @@ DATASET = Path("data/processed/calabarzon_food_insecurity_dataset.parquet")
 SCORES = Path("data/processed/_audited_nli_scores.parquet")
 CENSUS = Path("data/processed/lgu_census.parquet")
 
-WINDOW_START, WINDOW_END = "2020-Q1", "2025-Q4"
+# Tracks the feature matrix rather than restating it. Was a hardcoded
+# "2020-Q1".."2025-Q4", which discarded every 2026 article in the corpus.
+WINDOW_START, WINDOW_END = MODEL_QUARTERS[0], MODEL_QUARTERS[-1]
 PROVINCE_SCOPES = ("city_municipality", "province")
 
 

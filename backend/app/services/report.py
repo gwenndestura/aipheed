@@ -316,13 +316,21 @@ def _drivers_block(explain: dict, subject: str, quarter: str, width: float) -> l
 def _method_block(performance: dict) -> list:
     baselines = performance.get("baselines", {})
     skill = performance.get("skill", {})
+    weighted = performance.get("weightedAvg", {})
     rows = [
         ["Model accuracy", _num(performance.get("accuracy"), 4)],
+        # Shock class: of the series flagged, how many were shocked, and of the
+        # shocked series, how many were caught. These describe alert quality;
+        # accuracy on its own does not.
+        ["Precision (shock class)", _num(performance.get("precision"), 4)],
+        ["Recall (shock class)", _num(performance.get("recall"), 4)],
+        ["F1 score (shock class)", _num(performance.get("f1"), 4)],
+        ["F1 score (weighted avg)", _num(weighted.get("f1"), 4)],
+        ["ROC AUC", _num(performance.get("rocAuc"), 4)],
         ["Majority-class baseline", _num(baselines.get("majorityClass"), 4)],
         ["Seasonal-persistence baseline", _num(baselines.get("seasonalPersistence"), 4)],
         ["Skill over majority class", _signed(skill.get("vsMajority"))],
         ["Skill over seasonal persistence", _signed(skill.get("vsSeasonal"))],
-        ["ROC AUC", _num(performance.get("rocAuc"), 4)],
         ["Evaluation set size", str(performance.get("n", "--"))],
         ["Referred to analyst review", f"{performance.get('abstainPct', '--')}%"],
     ]
@@ -331,9 +339,10 @@ def _method_block(performance: dict) -> list:
             "The model predicts, for each monitored commodity series in a province, "
             "whether that quarter's production falls more than 10% below the series' "
             "own expanding seasonal baseline. The province figure is the share of its "
-            "series flagged. Inputs are PSA OpenStat production volumes, PSA and BSP "
-            "macroeconomic indicators, PAGASA climate variables, and a geocoded news "
-            "corpus.", "body"),
+            "series flagged. Inputs are PSA OpenStat production volumes and prices, "
+            "PSA consumer price indices, NOAA ENSO and tropical-cyclone records, "
+            "NASA POWER rainfall, exchange-rate and fuel benchmarks, and a geocoded "
+            "news corpus.", "body"),
         Spacer(1, 3 * mm),
         _data_table(["Measure", "Value"], rows, [78 * mm, 30 * mm], {1: "RIGHT"}),
         Spacer(1, 3 * mm),

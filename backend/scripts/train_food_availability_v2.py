@@ -51,7 +51,8 @@ warnings.filterwarnings("ignore")
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from scripts.train_food_availability import (  # noqa: E402
-    GOV, MATCHED, NLP, SEASONAL, SERIES, load,
+    GOV, MATCHED, NLP, SEASONAL, SERIES, classification_metrics, load,
+    seasonal_baseline_acc,
 )
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
@@ -154,7 +155,8 @@ def evaluate(df: pd.DataFrame, cols: list[str], variant: str,
              per_group: bool = False) -> dict:
     params = best_params()
     quarters = sorted(df["quarter"].unique())
-    acc, f1s, aucs, p4 = [], [], [], []
+    acc, p4 = [], []
+    y_true, y_pred, y_prob = [], [], []
 
     for i in range(MIN_TRAIN, len(quarters)):
         tr = df[df["quarter"].isin(quarters[:i])]
@@ -184,15 +186,25 @@ def evaluate(df: pd.DataFrame, cols: list[str], variant: str,
             thr = pick_threshold(tr["label_shock"], ptr)
 
         pred = (pte >= thr).astype(int)
+        # Pooled, not averaged per fold -- shock-class precision and recall are
+        # degenerate on a quarter with few positives, and averaging those gives
+        # each quarter equal weight regardless of size.
+        y_true.append(pd.Series(te["label_shock"].to_numpy()))
+        y_pred.append(pd.Series(pred))
+        y_prob.append(pd.Series(pte))
         acc.append(accuracy_score(te["label_shock"], pred))
-        f1s.append(f1_score(te["label_shock"], pred, average="weighted", zero_division=0))
-        if te["label_shock"].nunique() > 1:
-            aucs.append(roc_auc_score(te["label_shock"], pte))
-        p4.append(accuracy_score(te["label_shock"], te["shock_lag4"].astype(int)))
+        s4, s4n = seasonal_baseline_acc(te)
+        if s4n:
+            p4.append(s4)
 
-    return {"accuracy": float(np.mean(acc)), "f1": float(np.mean(f1s)),
-            "roc_auc": float(np.mean(aucs)), "seasonal_persistence": float(np.mean(p4)),
-            "folds": len(acc)}
+    if not acc:
+        return {"folds": 0}
+    out = {"folds": len(acc)}
+    out.update(classification_metrics(pd.concat(y_true, ignore_index=True),
+                                      pd.concat(y_pred, ignore_index=True),
+                                      pd.concat(y_prob, ignore_index=True)))
+    out["seasonal_persistence"] = float(np.mean(p4)) if p4 else float("nan")
+    return out
 
 
 def main() -> None:

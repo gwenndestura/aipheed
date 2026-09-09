@@ -56,7 +56,8 @@ warnings.filterwarnings("ignore")
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from scripts.train_food_availability import (  # noqa: E402
-    GOV, MATCHED, NLP, SEASONAL, SERIES, load,
+    GOV, MATCHED, NLP, SEASONAL, SERIES, classification_metrics, load,
+    seasonal_baseline_acc,
 )
 from scripts.train_food_availability_v2 import (  # noqa: E402
     MIN_TRAIN, best_params, build_members, fit_predict, pick_threshold,
@@ -178,11 +179,17 @@ def main() -> None:
     preds = pd.concat(rows, ignore_index=True)
 
     def m(d: pd.DataFrame) -> dict:
-        out = {"n": len(d),
-               "accuracy": accuracy_score(d["label_shock"], d["pred"]),
-               "f1": f1_score(d["label_shock"], d["pred"], average="weighted", zero_division=0),
-               "seasonal_persistence": accuracy_score(d["label_shock"],
-                                                      d["shock_lag4"].astype(int)),
+        seasonal, seasonal_n = seasonal_baseline_acc(d)
+        out = {"n": len(d)}
+        # accuracy, precision, recall, F1 (positive class and weighted),
+        # ROC-AUC and the confusion counts.
+        out.update(classification_metrics(d["label_shock"], d["pred"], d["prob"]))
+        out.update({
+               "seasonal_persistence": seasonal,
+               # Rows the seasonal baseline could actually be scored on. Below
+               # n, because 2021 has no fourth lag inside the window; quote it
+               # whenever skill_vs_seasonal is quoted.
+               "seasonal_persistence_n": seasonal_n,
                "naive_persistence": accuracy_score(d["label_shock"],
                                                    d["shock_lag1"].astype(int)),
                # Always-predict-the-common-class. Any reported accuracy must be
@@ -191,9 +198,7 @@ def main() -> None:
                # inflates accuracy by shrinking the positive class rather than
                # by predicting better.
                "majority_class": max(d["label_shock"].mean(),
-                                     1 - d["label_shock"].mean())}
-        out["roc_auc"] = (roc_auc_score(d["label_shock"], d["prob"])
-                          if d["label_shock"].nunique() > 1 else float("nan"))
+                                     1 - d["label_shock"].mean())})
         out["skill_vs_seasonal"] = out["accuracy"] - out["seasonal_persistence"]
         out["skill_vs_naive"] = out["accuracy"] - out["naive_persistence"]
         out["skill_vs_majority"] = out["accuracy"] - out["majority_class"]
@@ -223,8 +228,17 @@ def main() -> None:
     print("=" * 78)
     def block(title: str, r: dict, note: str = "") -> None:
         print(f"\n  {title}{note}")
-        print(f"    n={r['n']:5d}  accuracy={r['accuracy']:.4f}  F1={r['f1']:.4f}  "
-              f"AUC={r['roc_auc']:.4f}")
+        # The four metrics the department requires, reported on the SHOCK class
+        # first: the positive rate is ~0.29, so the weighted averages are
+        # flattered by the easy majority class and are printed underneath only
+        # for comparison.
+        print(f"    n={r['n']:5d}   accuracy={r['accuracy']:.4f}")
+        print(f"      shock class    precision={r['precision_shock']:.4f}  "
+              f"recall={r['recall_shock']:.4f}  F1={r['f1_shock']:.4f}")
+        print(f"      weighted avg   precision={r['precision_weighted']:.4f}  "
+              f"recall={r['recall_weighted']:.4f}  F1={r['f1_weighted']:.4f}")
+        print(f"      ROC-AUC={r['roc_auc']:.4f}   confusion "
+              f"TP={r['tp']} FP={r['fp']} FN={r['fn']} TN={r['tn']}")
         print(f"    majority {r['majority_class']:.4f} (skill {r['skill_vs_majority']:+.4f})"
               f"   |   seasonal persistence {r['seasonal_persistence']:.4f} "
               f"(skill {r['skill_vs_seasonal']:+.4f})")
@@ -237,14 +251,17 @@ def main() -> None:
     block("all folds, full coverage", overall)
     block("cold-start folds (excluded from operating figure)", cold)
 
-    print("\n  by commodity group  [operating set]")
-    for g, r in by_group.items():
-        print(f"    {g:22s} n={r['n']:5d}  acc={r['accuracy']:.4f}  "
-              f"AUC={r['roc_auc']:.4f}  skill={r['skill_vs_seasonal']:+.4f}")
-    print("\n  by province")
-    for g, r in by_prov.items():
-        print(f"    {g:22s} n={r['n']:5d}  acc={r['accuracy']:.4f}  "
-              f"AUC={r['roc_auc']:.4f}  skill={r['skill_vs_seasonal']:+.4f}")
+    def rows(title: str, table: dict) -> None:
+        print(f"\n  {title}   (precision/recall/F1 = shock class)")
+        print(f"    {'':22s} {'n':>5s} {'acc':>8s} {'prec':>8s} {'rec':>8s} "
+              f"{'F1':>8s} {'AUC':>8s}")
+        for g, r in table.items():
+            print(f"    {g:22s} {r['n']:5d} {r['accuracy']:8.4f} "
+                  f"{r['precision_shock']:8.4f} {r['recall_shock']:8.4f} "
+                  f"{r['f1_shock']:8.4f} {r['roc_auc']:8.4f}")
+
+    rows("by commodity group  [operating set]", by_group)
+    rows("by province", by_prov)
     print("=" * 78)
 
     OUT.write_text(json.dumps({

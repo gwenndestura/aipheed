@@ -1,250 +1,311 @@
 """
 app/ml/corpus/pagasa_climate_fetcher.py
 ----------------------------------------
-PAGASA climate data fetcher — tropical cyclones + rainfall anomalies for
-CALABARZON.
+CALABARZON province-quarter climate features, fetched live.
 
-PURPOSE
--------
-Climate shocks are the leading driver of acute food insecurity in the
-Philippines. CALABARZON sits in the typhoon belt — average ~3-5 tropical
-cyclone landfalls per year affect agricultural production and household
-food access. This data populates HungerGist triggers T2 (typhoons) and
-T3 (drought / El Niño).
+WHAT CHANGED AND WHY
+--------------------
+This module used to return a hand-typed table: 48 literal province-quarter rows
+plus a literal ENSO timeline, both ending at 2025-Q4. Nothing was fetched. That
+is why every downstream series stopped on the same quarter, and why the feature
+matrix could not be advanced without someone editing Python by hand.
 
-PRECEDENT (legitimate references)
----------------------------------
-- WFP HungerMap LIVE — climate layer (rainfall anomaly, NDVI, temperature)
-- FAO GIEWS Country Brief Philippines — typhoon impact tracking
-- IPCC AR6 WG2 Asia chapter — Philippine climate-food nexus
-- Balashankar et al. (2023) Science Advances — climate shock features
-- Lewis, Witham et al. (2023) "Predicting food insecurity in conflict
-  and climate-affected countries" — climate covariates as model inputs
-- World Bank Climate Risk Country Profile — Philippines (2021)
+Both signals now come from the authoritative archives:
 
-DATA STRATEGY
--------------
-PAGASA publishes:
-    1. Annual Tropical Cyclone Reports (bagong.pagasa.dost.gov.ph)
-       — landfall province, intensity, dates
-    2. Monthly Climate Assessment & Outlook
-       — rainfall anomaly per region (% departure from normal)
-    3. ENSO advisories — El Niño / La Niña phase
+    ENSO   NOAA CPC Oceanic Nino Index (ONI), the 3-month running mean sea
+           surface temperature anomaly in the Nino 3.4 region. This is the
+           index PAGASA cites when it declares an El Nino or La Nina alert.
+           https://www.cpc.ncep.noaa.gov/data/indices/oni.ascii.txt
 
-Annual TC reports are PDFs; rainfall anomaly maps are images. This
-fetcher uses curated quarterly summaries derived from PAGASA's official
-Annual Tropical Cyclone Reports + monthly Climate Assessments. Each
-quarter row carries the source PAGASA bulletin URL.
+    TCs    NOAA IBTrACS v04r01, Western Pacific basin -- the WMO-endorsed
+           best-track archive, which ingests the JTWC and JMA tracks that
+           PAGASA bulletins are built from. Storm positions are matched
+           against each province rather than assigned by a hand-written
+           exposure ranking.
+
+Both archives update continuously, so end_year defaults to the current year and
+the series extends itself as they do.
+
+RAINFALL
+--------
+rainfall_anomaly_pct is emitted as null here, deliberately. The feature matrix
+prefers data/processed/province_rainfall.parquet (NASA POWER, measured, province
+level) and falls back to this column only when that file is absent, so writing a
+guess here would displace a real measurement. See _load_pagasa in
+app/ml/features/feature_matrix.py.
 
 OUTPUT
 ------
-data/processed/pagasa_climate.parquet — columns:
-    province_code              : str (PSGC)
-    province_name              : str
-    year                       : int
-    quarter                    : str
-    tc_count                   : int   (tropical cyclones affecting province)
-    tc_max_signal              : int   (highest wind signal raised: 1-5)
-    tc_severe_flag             : int   (1 if signal >= 3)
-    rainfall_anomaly_pct       : float (% departure from 1991-2020 normal)
-    enso_phase                 : str   ("EL_NINO"/"LA_NINA"/"NEUTRAL")
-    enso_intensity             : str   ("WEAK"/"MODERATE"/"STRONG"/"NEUTRAL")
-    drought_alert              : int   (1 if PAGASA drought/dry-spell active)
-    source_url                 : str
-    source_note                : str
-    fetched_at                 : str
-
-TRAINING WINDOW: 2020-2025 strict.
+data/processed/pagasa_climate.parquet, schema unchanged:
+    province_code, province_name, year, quarter, tc_count, tc_max_signal,
+    tc_severe_flag, rainfall_anomaly_pct, enso_phase, enso_intensity,
+    drought_alert, geographic_level, province_varying, source_url,
+    source_note, fetched_at
 """
-
 from __future__ import annotations
 
 import logging
+import math
 from datetime import datetime, timezone
 from pathlib import Path
 
 import pandas as pd
+import requests
 
 logger = logging.getLogger(__name__)
 
-OUTPUT_PATH = Path("data/processed/pagasa_climate.parquet")
-SOURCE_BASE = "https://bagong.pagasa.dost.gov.ph/"
+ONI_URL = "https://www.cpc.ncep.noaa.gov/data/indices/oni.ascii.txt"
+IBTRACS_URL = ("https://www.ncei.noaa.gov/data/"
+               "international-best-track-archive-for-climate-stewardship-ibtracs/"
+               "v04r01/access/csv/ibtracs.WP.list.v04r01.csv")
 
-PROVINCES = [
-    ("PH040100000", "Cavite"),
-    ("PH040200000", "Laguna"),
-    ("PH040300000", "Quezon"),
-    ("PH040400000", "Rizal"),
-    ("PH040500000", "Batangas"),
-]
+# The WP best-track file is ~115 MB, so it is cached on disk and refreshed only
+# when the cache is older than this. A same-week re-run costs nothing.
+CACHE = Path("data/raw/ibtracs_wp.csv")
+CACHE_MAX_AGE_DAYS = 7
 
-# ---------------------------------------------------------------------------
-# Curated quarterly climate summary — CALABARZON 2020-2025
-# Sources:
-#   • PAGASA Annual Tropical Cyclone Reports 2020-2024
-#   • PAGASA Monthly Climate Assessment & Outlook bulletins
-#   • PAGASA ENSO advisories
-#
-# Format: (year, "Q#", province_code, tc_count, max_signal, rainfall_anom_pct,
-#          enso_phase, enso_intensity, drought_alert, note)
-# Quezon is most exposed (faces Pacific); Cavite/Batangas least.
-# ---------------------------------------------------------------------------
-
-# ENSO phases by quarter (national, applies to all CALABARZON)
-ENSO_TIMELINE = {
-    # 2020 — La Niña developing late
-    (2020, "Q1"): ("NEUTRAL", "NEUTRAL"),
-    (2020, "Q2"): ("NEUTRAL", "NEUTRAL"),
-    (2020, "Q3"): ("LA_NINA", "WEAK"),
-    (2020, "Q4"): ("LA_NINA", "MODERATE"),
-    # 2021 — La Niña continuing
-    (2021, "Q1"): ("LA_NINA", "MODERATE"),
-    (2021, "Q2"): ("LA_NINA", "WEAK"),
-    (2021, "Q3"): ("NEUTRAL", "NEUTRAL"),
-    (2021, "Q4"): ("LA_NINA", "WEAK"),
-    # 2022 — La Niña third year ("triple-dip")
-    (2022, "Q1"): ("LA_NINA", "MODERATE"),
-    (2022, "Q2"): ("LA_NINA", "WEAK"),
-    (2022, "Q3"): ("LA_NINA", "WEAK"),
-    (2022, "Q4"): ("LA_NINA", "MODERATE"),
-    # 2023 — El Niño emerges Q2-Q3
-    (2023, "Q1"): ("NEUTRAL", "NEUTRAL"),
-    (2023, "Q2"): ("EL_NINO", "WEAK"),
-    (2023, "Q3"): ("EL_NINO", "MODERATE"),
-    (2023, "Q4"): ("EL_NINO", "STRONG"),
-    # 2024 — El Niño peaks then decays to neutral; La Niña forming late
-    (2024, "Q1"): ("EL_NINO", "STRONG"),
-    (2024, "Q2"): ("EL_NINO", "WEAK"),
-    (2024, "Q3"): ("NEUTRAL", "NEUTRAL"),
-    (2024, "Q4"): ("LA_NINA", "WEAK"),
-    # 2025 — La Niña weak then neutral
-    (2025, "Q1"): ("LA_NINA", "WEAK"),
-    (2025, "Q2"): ("NEUTRAL", "NEUTRAL"),
-    (2025, "Q3"): ("NEUTRAL", "NEUTRAL"),
-    (2025, "Q4"): ("NEUTRAL", "NEUTRAL"),
+# Province centroids (WGS84). Geographic constants, not statistics -- there is
+# nothing here that goes out of date.
+PROVINCE_CENTROIDS = {
+    "PH040100000": ("Cavite", 14.28, 120.88),
+    "PH040200000": ("Laguna", 14.17, 121.33),
+    "PH040300000": ("Quezon", 13.93, 122.11),
+    "PH040400000": ("Rizal", 14.60, 121.30),
+    "PH040500000": ("Batangas", 13.79, 121.06),
 }
 
-# Province-quarter TC + rainfall + drought
-# Province exposure ranking: Quezon > Rizal > Laguna > Batangas > Cavite
-# (Quezon = Pacific-facing; others on Manila-Bay side)
-CALABARZON_QUARTERLY = [
-    # (year, q, prov_code, tc_count, max_signal, rainfall_anom_pct, drought_alert, note)
-    # 2020 — Pandemic + late-year typhoon Ulysses (Vamco)
-    (2020, "Q1", "PH040300000", 0, 0, -8.5, 0, "Dry start"),
-    (2020, "Q2", "PH040300000", 1, 2, +5.2, 0, "TS Ambo (Vongfong)"),
-    (2020, "Q3", "PH040300000", 2, 3, +18.4, 0, "TY Pepito + others"),
-    (2020, "Q4", "PH040300000", 3, 5, +42.1, 0, "TY Rolly (Goni) + Ulysses (Vamco) - severe"),
-    # 2021
-    (2021, "Q1", "PH040300000", 0, 0, +12.3, 0, "La Nina rains"),
-    (2021, "Q2", "PH040300000", 1, 2, +8.7, 0, ""),
-    (2021, "Q3", "PH040300000", 2, 3, +15.0, 0, "TY Jolina (Conson)"),
-    (2021, "Q4", "PH040300000", 1, 4, +22.5, 0, "TY Odette (Rai) — south track"),
-    # 2022
-    (2022, "Q1", "PH040300000", 0, 0, +5.0, 0, ""),
-    (2022, "Q2", "PH040300000", 1, 2, +10.2, 0, ""),
-    (2022, "Q3", "PH040300000", 2, 4, +25.8, 0, "TY Karding (Noru)"),
-    (2022, "Q4", "PH040300000", 2, 3, +18.0, 0, "TY Paeng (Nalgae)"),
-    # 2023 — El Niño dries the latter half
-    (2023, "Q1", "PH040300000", 0, 0, -2.0, 0, ""),
-    (2023, "Q2", "PH040300000", 1, 2, -8.5, 0, "TY Egay weak track"),
-    (2023, "Q3", "PH040300000", 1, 3, -15.2, 1, "El Nino dryness"),
-    (2023, "Q4", "PH040300000", 0, 0, -22.5, 1, "Strong El Nino drought watch"),
-    # 2024 — El Niño peak Q1, then easing; late-year typhoons
-    (2024, "Q1", "PH040300000", 0, 0, -28.5, 1, "Drought across Luzon"),
-    (2024, "Q2", "PH040300000", 0, 0, -18.0, 1, "Continued dry spell"),
-    (2024, "Q3", "PH040300000", 2, 4, +12.5, 0, "TY Carina + Enteng"),
-    (2024, "Q4", "PH040300000", 4, 5, +35.0, 0, "TY Pepito quartet — Oct-Nov sequence"),
-    # 2025 — La Niña residual; quieter
-    (2025, "Q1", "PH040300000", 0, 0, +5.0, 0, ""),
-    (2025, "Q2", "PH040300000", 1, 2, +8.0, 0, ""),
-    (2025, "Q3", "PH040300000", 2, 3, +18.5, 0, ""),
-    (2025, "Q4", "PH040300000", 1, 3, +15.0, 0, ""),
-]
+# A storm counts for a province when its track passes within this distance of
+# the province centroid. 300 km approximates the radius over which a Western
+# Pacific tropical cyclone produces damaging wind and rain, and is the scale at
+# which PAGASA places whole provinces under a wind signal.
+TC_RADIUS_KM = 300.0
 
-# ---------------------------------------------------------------------------
-# DEMOTED 2026-09-01 — province variation removed.
-#
-# This fetcher previously derived four of the five provinces from the Quezon
-# series by a fixed "Sierra Madre shielding factor":
-#
-#     rainfall_anom = anom_qz * (0.5 + 0.5 * PROVINCE_TC_MULT[province])
-#
-# The result was that rainfall_anomaly_pct correlated at EXACTLY 1.0000 between
-# every pair of provinces — Cavite was 0.70 x Quezon in all 24 quarters. Two
-# features built on it, rainfall_anomaly_pct_lag1 and rainfall_anomaly_pct_accel,
-# were live in trainer.FEATURE_COLS, so the model was being handed one province's
-# weather scaled five ways and presented as province-level measurement. Scaling a
-# percentage anomaly by an exposure coefficient is not meaningful in any case: a
-# sheltered province has its own anomaly, not a fraction of its neighbour's.
-#
-# Only Quezon ever had underlying data, so the honest treatment is to publish it
-# as a single REGIONAL series inherited to all five provinces — the same
-# convention used for SWS hunger and FNRI FIES. The temporal signal is real and
-# is retained; the province signal never existed and is now absent rather than
-# manufactured.
-#
-# To restore genuine province-level climate data, source per-station rainfall
-# from the PAGASA Climate Data Section (CLIMPS) rather than reintroducing a
-# multiplier.
-# ---------------------------------------------------------------------------
-GEOGRAPHIC_LEVEL = "region_inherited"
+# NOAA declares an episode at |ONI| >= 0.5 sustained over five overlapping
+# seasons; the intensity bands are CPC definitions.
+ENSO_THRESHOLD = 0.5
+INTENSITY_BANDS = [(2.0, "VERY_STRONG"), (1.5, "STRONG"),
+                   (1.0, "MODERATE"), (0.5, "WEAK")]
+
+# PAGASA Tropical Cyclone Wind Signal by 10-minute sustained wind, converted
+# from the km/h bands in the TCWS definition to the knots IBTrACS reports.
+TCWS_BANDS_KT = [(100, 5), (64, 4), (49, 3), (34, 2), (21, 1)]
+
+# ONI rows are 3-month running means labelled by their centre month.
+SEASON_CENTRE_MONTH = {"DJF": 1, "JFM": 2, "FMA": 3, "MAM": 4, "AMJ": 5, "MJJ": 6,
+                       "JJA": 7, "JAS": 8, "ASO": 9, "SON": 10, "OND": 11, "NDJ": 12}
+
+SESSION = requests.Session()
+SESSION.headers.update({"User-Agent": "aiPHeed/1.0 (+research; DLSU-D thesis)"})
 
 
-def fetch_pagasa_climate(start_year: int = 2020, end_year: int = 2025) -> pd.DataFrame:
-    """Build CALABARZON quarterly climate panel from PAGASA bulletins."""
-    fetched_at = datetime.now(timezone.utc).isoformat()
+def _haversine_km(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
+    r = 6371.0
+    p1, p2 = math.radians(lat1), math.radians(lat2)
+    dp, dl = p2 - p1, math.radians(lon2 - lon1)
+    a = math.sin(dp / 2) ** 2 + math.cos(p1) * math.cos(p2) * math.sin(dl / 2) ** 2
+    return 2 * r * math.asin(math.sqrt(a))
+
+
+def _classify_enso(oni: float) -> tuple[str, str]:
+    if oni >= ENSO_THRESHOLD:
+        phase = "EL_NINO"
+    elif oni <= -ENSO_THRESHOLD:
+        phase = "LA_NINA"
+    else:
+        return "NEUTRAL", "NEUTRAL"
+    mag = abs(oni)
+    for cut, name in INTENSITY_BANDS:
+        if mag >= cut:
+            return phase, name
+    return phase, "WEAK"
+
+
+def fetch_oni(start_year: int, end_year: int) -> pd.DataFrame:
+    """Quarterly ENSO state from the NOAA CPC Oceanic Nino Index."""
+    r = SESSION.get(ONI_URL, timeout=60)
+    r.raise_for_status()
+
     rows = []
-
-    # Build quezon-baseline lookup
-    quezon_lookup = {(y, q): (tc, sig, anom, drought, note)
-                     for (y, q, _, tc, sig, anom, drought, note) in CALABARZON_QUARTERLY}
-
-    for (year, q), (enso_phase, enso_intensity) in ENSO_TIMELINE.items():
-        if not (start_year <= year <= end_year):
+    for line in r.text.splitlines()[1:]:
+        parts = line.split()
+        if len(parts) != 4 or parts[0] not in SEASON_CENTRE_MONTH:
             continue
-        base = quezon_lookup.get((year, q), (0, 0, 0.0, 0, ""))
-        tc_qz, sig_qz, anom_qz, drought, note = base
+        try:
+            rows.append({"year": int(parts[1]),
+                         "month": SEASON_CENTRE_MONTH[parts[0]],
+                         "oni": float(parts[3])})
+        except ValueError:
+            continue
 
-        for prov_code, prov_name in PROVINCES:
-            # Regional value inherited unchanged to every province. No scaling:
-            # see the DEMOTED note above. These rows are NOT independent
-            # province observations and must not be read as such.
-            rows.append({
-                "province_code": prov_code,
-                "province_name": prov_name,
-                "year": year,
-                "quarter": f"{year}-{q}",
-                "tc_count": tc_qz,
-                "tc_max_signal": sig_qz,
-                "tc_severe_flag": int(sig_qz >= 3),
-                "rainfall_anomaly_pct": anom_qz,
-                "enso_phase": enso_phase,
-                "enso_intensity": enso_intensity,
-                "drought_alert": int(drought),
-                "geographic_level": GEOGRAPHIC_LEVEL,
-                "province_varying": False,
-                "source_url": SOURCE_BASE,
-                "source_note": (f"PAGASA Annual TC Report + Monthly Climate Assessment {year}{q}. "
-                                f"CALABARZON-level series (Quezon-station baseline) inherited to "
-                                f"all provinces; no province-level disaggregation available. "
-                                f"{note}").strip(),
-                "fetched_at": fetched_at,
-            })
+    m = pd.DataFrame(rows)
+    if m.empty:
+        raise RuntimeError(f"ONI feed at {ONI_URL} returned no parsable rows -- "
+                           "the format has changed")
+    m["quarter"] = "Q" + ((m["month"] - 1) // 3 + 1).astype(str)
 
-    df = pd.DataFrame(rows)
-    logger.info("PAGASA climate: %d rows (%d quarters × %d provinces)",
-                len(df), df["quarter"].nunique() if len(df) else 0, len(PROVINCES))
-    return df
+    q = m.groupby(["year", "quarter"], as_index=False)["oni"].mean()
+    q = q[(q["year"] >= start_year) & (q["year"] <= end_year)].reset_index(drop=True)
+    q[["enso_phase", "enso_intensity"]] = q["oni"].apply(
+        lambda v: pd.Series(_classify_enso(v)))
+    # PAGASA issues drought advisories on a sustained moderate-or-stronger El
+    # Nino, so the alert tracks that band rather than being a separate judgement.
+    q["drought_alert"] = ((q["enso_phase"] == "EL_NINO") & (q["oni"] >= 1.0)).astype(int)
+
+    logger.info("ONI: %d quarters, %s-%s .. %s-%s", len(q),
+                q["year"].min(), q["quarter"].min(),
+                q["year"].max(), q["quarter"].max())
+    return q
 
 
-def main() -> None:
-    logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
-    df = fetch_pagasa_climate(2020, 2025)
-    OUTPUT_PATH.parent.mkdir(parents=True, exist_ok=True)
-    df.to_parquet(OUTPUT_PATH, index=False)
-    print(f"[ok] wrote {OUTPUT_PATH} — {len(df)} rows")
-    print(df.groupby(["enso_phase", "enso_intensity"]).size().to_string())
+def _ibtracs_frame() -> pd.DataFrame:
+    """Best-track positions, cached on disk because the feed is ~115 MB."""
+    stale = True
+    if CACHE.exists():
+        age_days = (datetime.now(timezone.utc).timestamp()
+                    - CACHE.stat().st_mtime) / 86400
+        stale = age_days > CACHE_MAX_AGE_DAYS
+        logger.info("IBTrACS cache is %s (%.1f days old)",
+                    "stale" if stale else "fresh", age_days)
+
+    if stale:
+        CACHE.parent.mkdir(parents=True, exist_ok=True)
+        logger.info("downloading IBTrACS WP best track (~115 MB)...")
+        with SESSION.get(IBTRACS_URL, timeout=900, stream=True) as r:
+            r.raise_for_status()
+            tmp = CACHE.with_suffix(".part")
+            with open(tmp, "wb") as fh:
+                for chunk in r.iter_content(1 << 20):
+                    fh.write(chunk)
+            tmp.replace(CACHE)
+        logger.info("cached -> %s (%.0f MB)", CACHE, CACHE.stat().st_size / 1e6)
+
+    # Row 0 is the header; row 1 is a units row that must be skipped.
+    df = pd.read_csv(CACHE, skiprows=[1], low_memory=False,
+                     usecols=["SID", "SEASON", "NAME", "ISO_TIME",
+                              "LAT", "LON", "WMO_WIND"])
+    for c in ("LAT", "LON", "WMO_WIND", "SEASON"):
+        df[c] = pd.to_numeric(df[c], errors="coerce")
+    return df.dropna(subset=["LAT", "LON"])
+
+
+def fetch_tropical_cyclones(start_year: int, end_year: int) -> pd.DataFrame:
+    """Province-quarter storm counts and peak wind signal from IBTrACS."""
+    df = _ibtracs_frame()
+    df = df[(df["SEASON"] >= start_year - 1) & (df["SEASON"] <= end_year)].copy()
+
+    # Cheap bounding box before the per-point distance computation.
+    df = df[df["LAT"].between(10.0, 19.0) & df["LON"].between(116.0, 127.0)]
+    df["ISO_TIME"] = pd.to_datetime(df["ISO_TIME"], errors="coerce")
+    df = df.dropna(subset=["ISO_TIME"])
+    logger.info("IBTrACS: %d track points in the Philippine box", len(df))
+
+    frames = []
+    for pcode, (pname, plat, plon) in PROVINCE_CENTROIDS.items():
+        d = df.copy()
+        d["dist_km"] = [_haversine_km(plat, plon, la, lo)
+                        for la, lo in zip(d["LAT"], d["LON"])]
+        near = d[d["dist_km"] <= TC_RADIUS_KM]
+        if near.empty:
+            continue
+        near = near.assign(year=near["ISO_TIME"].dt.year,
+                           quarter="Q" + near["ISO_TIME"].dt.quarter.astype(str))
+        # A single storm sits in the radius for many 3-hourly points, so count
+        # distinct storm ids rather than points.
+        agg = (near.groupby(["year", "quarter"])
+                   .agg(tc_count=("SID", "nunique"), peak_kt=("WMO_WIND", "max"))
+                   .reset_index())
+        agg["province_code"] = pcode
+        agg["province_name"] = pname
+        frames.append(agg)
+
+    if not frames:
+        raise RuntimeError("IBTrACS returned no storms near CALABARZON -- the "
+                           "feed format has probably changed")
+    tc = pd.concat(frames, ignore_index=True)
+
+    def signal(kt: float) -> int:
+        if pd.isna(kt):
+            return 0
+        for cut, sig in TCWS_BANDS_KT:
+            if kt >= cut:
+                return sig
+        return 0
+
+    tc["tc_max_signal"] = tc["peak_kt"].apply(signal)
+    tc["tc_severe_flag"] = (tc["tc_max_signal"] >= 3).astype(int)
+    return tc.drop(columns=["peak_kt"])
+
+
+def fetch_pagasa_climate(start_year: int = 2021,
+                         end_year: int | None = None) -> pd.DataFrame:
+    """
+    Build the CALABARZON province-quarter climate frame.
+
+    end_year defaults to the current calendar year, so a re-run picks up every
+    quarter the upstream archives have published since the last one.
+    """
+    end_year = end_year or datetime.now(timezone.utc).year
+    oni = fetch_oni(start_year, end_year)
+    tc = fetch_tropical_cyclones(start_year, end_year)
+
+    grid = pd.MultiIndex.from_product(
+        [list(PROVINCE_CENTROIDS), range(start_year, end_year + 1),
+         ["Q1", "Q2", "Q3", "Q4"]],
+        names=["province_code", "year", "quarter"]).to_frame(index=False)
+    grid["province_name"] = grid["province_code"].map(
+        {k: v[0] for k, v in PROVINCE_CENTROIDS.items()})
+
+    out = (grid
+           .merge(tc, on=["province_code", "province_name", "year", "quarter"],
+                  how="left")
+           .merge(oni.drop(columns=["oni"]), on=["year", "quarter"], how="left"))
+
+    # No storm inside the radius is a real zero. A missing ENSO state is not
+    # neutral -- it means the index has not been published for that quarter yet,
+    # so those rows are dropped rather than filled.
+    for c in ("tc_count", "tc_max_signal", "tc_severe_flag"):
+        out[c] = out[c].fillna(0).astype(int)
+
+    unresolved = int(out["enso_phase"].isna().sum())
+    if unresolved:
+        logger.warning("dropping %d province-quarters with no published ONI yet",
+                       unresolved)
+        out = out.dropna(subset=["enso_phase"])
+
+    out["drought_alert"] = out["drought_alert"].astype(int)
+    out["rainfall_anomaly_pct"] = pd.NA
+    out["geographic_level"] = "province"
+    out["province_varying"] = True
+    out["source_url"] = f"{ONI_URL} ; {IBTRACS_URL}"
+    out["source_note"] = (
+        "ENSO from NOAA CPC Oceanic Nino Index (3-month running Nino 3.4 SST "
+        "anomaly), averaged to quarters. Tropical cyclones from NOAA IBTrACS "
+        "v04r01 Western Pacific best track: distinct storms passing within "
+        f"{TC_RADIUS_KM:.0f} km of the province centroid, peak 10-minute wind "
+        "mapped to the PAGASA TCWS band. rainfall_anomaly_pct is null here and "
+        "supplied by province_rainfall.parquet (NASA POWER, measured)."
+    )
+    out["fetched_at"] = datetime.now(timezone.utc).isoformat()
+
+    # The quarter column is the join key against the feature-matrix backbone,
+    # which uses the full "YYYY-Qn" label. Composed last because the internal
+    # merges above key on (year, quarter) with the bare quarter.
+    out["quarter"] = out["year"].astype(str) + "-" + out["quarter"]
+
+    out = out.sort_values(["province_code", "year", "quarter"]).reset_index(drop=True)
+    logger.info("pagasa_climate: %d rows, %s-%s .. %s-%s", len(out),
+                out["year"].min(), out["quarter"].min(),
+                out["year"].max(), out["quarter"].max())
+    return out
 
 
 if __name__ == "__main__":
-    main()
+    logging.basicConfig(level=logging.INFO,
+                        format="%(asctime)s %(levelname)s %(message)s")
+    frame = fetch_pagasa_climate(2021)
+    dest = Path("data/processed/pagasa_climate.parquet")
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    frame.to_parquet(dest, index=False)
+    print(frame.groupby(["year", "quarter"])[["tc_count", "tc_severe_flag"]]
+               .sum().to_string())
+    print(f"\nwrote {len(frame)} rows -> {dest}")

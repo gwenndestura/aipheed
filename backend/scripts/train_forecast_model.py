@@ -69,7 +69,8 @@ warnings.filterwarnings("ignore")
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from scripts.train_food_availability import (  # noqa: E402
-    GOV, MATCHED, NLP, SEASONAL, SERIES, load,
+    GOV, MATCHED, NLP, SEASONAL, SERIES, classification_metrics, load,
+    seasonal_baseline_acc,
 )
 from scripts.train_food_availability_v2 import (  # noqa: E402
     MIN_TRAIN, SMOOTHING, best_params, build_members, fit_predict,
@@ -119,19 +120,21 @@ def forecast_feature_cols(df: pd.DataFrame, lagged: list[str]) -> list[str]:
 
 def metrics(d: pd.DataFrame) -> dict:
     maj = max(d["label_shock"].mean(), 1 - d["label_shock"].mean())
-    seasonal = accuracy_score(d["label_shock"], d["shock_lag4"].astype(int))
+    seasonal, seasonal_n = seasonal_baseline_acc(d)
     naive = accuracy_score(d["label_shock"], d["shock_lag1"].astype(int))
-    acc = accuracy_score(d["label_shock"], d["pred"])
-    out = {
-        "n": len(d),
-        "accuracy": acc,
-        "f1": f1_score(d["label_shock"], d["pred"], average="weighted", zero_division=0),
+    out = {"n": len(d)}
+    # accuracy, precision, recall, F1 (positive class and weighted), ROC-AUC
+    # and the confusion counts.
+    out.update(classification_metrics(d["label_shock"], d["pred"], d["prob"]))
+    acc = out["accuracy"]
+    out.update({
         "seasonal_persistence": seasonal,
+        # 2021 rows have no fourth lag, so the seasonal baseline is scored on
+        # fewer rows than the model. Quote this alongside skill_vs_seasonal.
+        "seasonal_persistence_n": seasonal_n,
         "naive_persistence": naive,
         "majority_class": maj,
-        "roc_auc": (roc_auc_score(d["label_shock"], d["prob"])
-                    if d["label_shock"].nunique() > 1 else float("nan")),
-    }
+    })
     out["skill_vs_seasonal"] = acc - seasonal
     out["skill_vs_naive"] = acc - naive
     out["skill_vs_majority"] = acc - maj
@@ -248,8 +251,15 @@ def main() -> None:
                      ("mature window, full coverage", results["mature_full_coverage"]),
                      ("all folds, full coverage", results["all_folds"])]:
         print(f"\n  {title}")
-        print(f"    n={r['n']:5d}  accuracy={r['accuracy']:.4f}  F1={r['f1']:.4f}  "
-              f"AUC={r['roc_auc']:.4f}")
+        # Shock class first: at a ~0.29 positive rate the weighted averages are
+        # carried by the easy majority class.
+        print(f"    n={r['n']:5d}   accuracy={r['accuracy']:.4f}")
+        print(f"      shock class    precision={r['precision_shock']:.4f}  "
+              f"recall={r['recall_shock']:.4f}  F1={r['f1_shock']:.4f}")
+        print(f"      weighted avg   precision={r['precision_weighted']:.4f}  "
+              f"recall={r['recall_weighted']:.4f}  F1={r['f1_weighted']:.4f}")
+        print(f"      ROC-AUC={r['roc_auc']:.4f}   confusion "
+              f"TP={r['tp']} FP={r['fp']} FN={r['fn']} TN={r['tn']}")
         print(f"    majority {r['majority_class']:.4f} (skill {r['skill_vs_majority']:+.4f})"
               f"   |   seasonal persistence {r['seasonal_persistence']:.4f} "
               f"(skill {r['skill_vs_seasonal']:+.4f})")
