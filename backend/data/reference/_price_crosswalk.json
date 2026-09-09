@@ -1,0 +1,293 @@
+{
+ "Banana": [
+  [
+   "0052M4AWB07.px",
+   "0",
+   "Banana Bungulan, ripe*"
+  ],
+  [
+   "0052M4AWB07.px",
+   "1",
+   "Banana Lakatan, ripe*"
+  ],
+  [
+   "0052M4AWB07.px",
+   "2",
+   "Banana Latundan, ripe*"
+  ],
+  [
+   "0052M4AWB07.px",
+   "3",
+   "Banana Saba, ripe*"
+  ],
+  [
+   "0052M4AWB07.px",
+   "4",
+   "Banana Saba, Green"
+  ]
+ ],
+ "Banana Bungulan": [
+  [
+   "0052M4AWB07.px",
+   "0",
+   "Banana Bungulan, ripe*"
+  ]
+ ],
+ "Banana Lakatan": [
+  [
+   "0052M4AWB07.px",
+   "1",
+   "Banana Lakatan, ripe*"
+  ]
+ ],
+ "Banana Latundan": [
+  [
+   "0052M4AWB07.px",
+   "2",
+   "Banana Latundan, ripe*"
+  ]
+ ],
+ "Banana Saba": [
+  [
+   "0052M4AWB07.px",
+   "3",
+   "Banana Saba, ripe*"
+  ],
+  [
+   "0052M4AWB07.px",
+   "4",
+   "Banana Saba, Green"
+  ]
+ ],
+ "Calamansi": [
+  [
+   "0052M4AWB07.px",
+   "5",
+   "Calamansi"
+  ]
+ ],
+ "Mandarin": [
+  [
+   "0052M4AWB07.px",
+   "6",
+   "Mandarin Szinkom"
+  ]
+ ],
+ "Mango": [
+  [
+   "0052M4AWB07.px",
+   "7",
+   "Mango Carabao, green"
+  ],
+  [
+   "0052M4AWB07.px",
+   "8",
+   "Mango Carabao, ripe"
+  ]
+ ],
+ "Mango Carabao": [
+  [
+   "0052M4AWB07.px",
+   "7",
+   "Mango Carabao, green"
+  ],
+  [
+   "0052M4AWB07.px",
+   "8",
+   "Mango Carabao, ripe"
+  ]
+ ],
+ "Papaya": [
+  [
+   "0052M4AWB07.px",
+   "10",
+   "Papaya Hawaiian*"
+  ]
+ ],
+ "Papaya, Hawaiian": [
+  [
+   "0052M4AWB07.px",
+   "10",
+   "Papaya Hawaiian*"
+  ]
+ ],
+ "Pineapple": [
+  [
+   "0052M4AWB07.px",
+   "11",
+   "Pineapple Hawaiian*"
+  ]
+ ],
+ "Watermelon": [
+  [
+   "0052M4AWB07.px",
+   "12",
+   "Watermelon*"
+  ]
+ ],
+ "Cabbage": [
+  [
+   "0052M4AWB06.px",
+   "2",
+   "Cabbage"
+  ]
+ ],
+ "Cucumber": [
+  [
+   "0052M4AWB05.px",
+   "3",
+   "Cucumber, baguio"
+  ]
+ ],
+ "Eggplant": [
+  [
+   "0052M4AWB05.px",
+   "4",
+   "Eggplant long, purple"
+  ],
+  [
+   "0052M4AWB05.px",
+   "5",
+   "Eggplant native, round"
+  ]
+ ],
+ "Gabi [Taro]": [
+  [
+   "0052M4AWB02.px",
+   "2",
+   "Gabi Cebu, for ginataan [Taro (cocoyam)]"
+  ],
+  [
+   "0052M4AWB02.px",
+   "3",
+   "Gabi Tagalog, for sinigang [Tannia, Yautia (cocoyam)]"
+  ]
+ ],
+ "Ginger": [
+  [
+   "0052M4AWB04.px",
+   "2",
+   "Ginger Hawaiian"
+  ],
+  [
+   "0052M4AWB04.px",
+   "3",
+   "Ginger Native"
+  ]
+ ],
+ "Habitchuelas [Snap beans]": [
+  [
+   "0052M4AWB03.px",
+   "0",
+   "Habitchuelas [Snap beans]"
+  ]
+ ],
+ "Kidney beans, white": [
+  [
+   "0052M4AWB03.px",
+   "1",
+   "Kidney Beans, white"
+  ]
+ ],
+ "Lettuce": [
+  [
+   "0052M4AWB06.px",
+   "4",
+   "Lettuce head"
+  ]
+ ],
+ "Mongo [Mungbean]": [
+  [
+   "0052M4AWB03.px",
+   "2",
+   "Mongo [Mungbean], green"
+  ],
+  [
+   "0052M4AWB03.px",
+   "3",
+   "Mongo [Mungbean], Yellow"
+  ]
+ ],
+ "Okra [Lady's finger]": [
+  [
+   "0052M4AWB05.px",
+   "7",
+   "Okra"
+  ]
+ ],
+ "Onion leeks": [
+  [
+   "0052M4AWB04.px",
+   "4",
+   "Onion Leeks"
+  ]
+ ],
+ "Onion, red creole (Bermuda red)": [
+  [
+   "0052M4AWB04.px",
+   "6",
+   "Onion Red Creole (Bermuda Red)"
+  ]
+ ],
+ "Patola": [
+  [
+   "0052M4AWB05.px",
+   "8",
+   "Patola [Dishrag gourd], native"
+  ]
+ ],
+ "Peanut, with shell, dry": [
+  [
+   "0052M4AWB03.px",
+   "4",
+   "Peanut with shell, dry"
+  ]
+ ],
+ "Pechay, native": [
+  [
+   "0052M4AWB06.px",
+   "6",
+   "Pechay native"
+  ]
+ ],
+ "Pepper, bell": [
+  [
+   "0052M4AWB04.px",
+   "8",
+   "Pepper bell"
+  ]
+ ],
+ "Pepper, finger": [
+  [
+   "0052M4AWB04.px",
+   "9",
+   "Pepper finger, green"
+  ]
+ ],
+ "Radish": [
+  [
+   "0052M4AWB02.px",
+   "4",
+   "Radish"
+  ]
+ ],
+ "Tomato": [
+  [
+   "0052M4AWB05.px",
+   "10",
+   "Tomato, ripe"
+  ],
+  [
+   "0052M4AWB05.px",
+   "11",
+   "Tomato green"
+  ]
+ ],
+ "Upo [Bottle gourd]": [
+  [
+   "0052M4AWB05.px",
+   "12",
+   "Upo [Bottle gourd]"
+  ]
+ ]
+}

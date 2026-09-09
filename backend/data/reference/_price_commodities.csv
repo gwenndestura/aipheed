@@ -1,0 +1,104 @@
+table,group_tbl,code,raw,norm
+0052M4AWB01.px,Cereals,0,Rice Special,rice special
+0052M4AWB01.px,Cereals,1,Rice Premium,rice premium
+0052M4AWB01.px,Cereals,2,Well Milled Rice (WMR),well milled rice
+0052M4AWB01.px,Cereals,3,Regular Milled Rice (RMR),regular milled rice
+0052M4AWB01.px,Cereals,4,Corngrain Yellow,corngrain yellow
+0052M4AWB01.px,Cereals,5,Corngrain White,corngrain white
+0052M4AWB01.px,Cereals,6,Corngrits Yellow,corngrits yellow
+0052M4AWB01.px,Cereals,7,Corngrits White,corngrits white
+0052M4AWB02.px,Rootcrops,0,Carrots,carrots
+0052M4AWB02.px,Rootcrops,1,Cassava,cassava
+0052M4AWB02.px,Rootcrops,2,"Gabi Cebu, for ginataan [Taro (cocoyam)]",gabi cebu for ginataan
+0052M4AWB02.px,Rootcrops,3,"Gabi Tagalog, for sinigang [Tannia, Yautia (cocoyam)]",gabi tagalog for sinigang
+0052M4AWB02.px,Rootcrops,4,Radish,radish
+0052M4AWB02.px,Rootcrops,5,Sweet Potato,sweet potato
+0052M4AWB02.px,Rootcrops,6,White/Irish Potato,white irish potato
+0052M4AWB03.px,Beans,0,Habitchuelas [Snap beans],habitchuelas
+0052M4AWB03.px,Beans,1,"Kidney Beans, white",kidney beans white
+0052M4AWB03.px,Beans,2,"Mongo [Mungbean], green",mongo green
+0052M4AWB03.px,Beans,3,"Mongo [Mungbean], Yellow",mongo yellow
+0052M4AWB03.px,Beans,4,"Peanut with shell, dry",peanut with shell dry
+0052M4AWB03.px,Beans,5,"Peanut without shell, dry",peanut without shell dry
+0052M4AWB03.px,Beans,6,Stringbeans,stringbeans
+0052M4AWB03.px,Beans,7,Sweet Peas Baguio,sweet peas baguio
+0052M4AWB03.px,Beans,8,Sweet Peas Native,sweet peas native
+0052M4AWB04.px,Condiments,0,Garlic Taiwan (Imported),garlic taiwan
+0052M4AWB04.px,Condiments,1,"Garlic, native",garlic native
+0052M4AWB04.px,Condiments,2,Ginger Hawaiian,ginger hawaiian
+0052M4AWB04.px,Condiments,3,Ginger Native,ginger native
+0052M4AWB04.px,Condiments,4,Onion Leeks,onion leeks
+0052M4AWB04.px,Condiments,5,"Onion native (red shallot), multiplier",onion native multiplier
+0052M4AWB04.px,Condiments,6,Onion Red Creole (Bermuda Red),onion red creole
+0052M4AWB04.px,Condiments,7,Onion White (Yellow Granex),onion white
+0052M4AWB04.px,Condiments,8,Pepper bell,pepper bell
+0052M4AWB04.px,Condiments,9,"Pepper finger, green",pepper finger green
+0052M4AWB04.px,Condiments,10,"Pepper hot, red labuyo [Chili pepper]",pepper hot red labuyo
+0052M4AWB05.px,FruitVeg,0,Ampalaya [Bitter gourd],ampalaya
+0052M4AWB05.px,FruitVeg,1,Ampalaya [Bitter gourd] Native Variety,ampalaya native variety
+0052M4AWB05.px,FruitVeg,2,Chayote,chayote
+0052M4AWB05.px,FruitVeg,3,"Cucumber, baguio",cucumber baguio
+0052M4AWB05.px,FruitVeg,4,"Eggplant long, purple",eggplant long purple
+0052M4AWB05.px,FruitVeg,5,"Eggplant native, round",eggplant native round
+0052M4AWB05.px,FruitVeg,6,Jackfruit green,jackfruit green
+0052M4AWB05.px,FruitVeg,7,Okra,okra
+0052M4AWB05.px,FruitVeg,8,"Patola [Dishrag gourd], native",patola native
+0052M4AWB05.px,FruitVeg,9,Squash,squash
+0052M4AWB05.px,FruitVeg,10,"Tomato, ripe",tomato ripe
+0052M4AWB05.px,FruitVeg,11,Tomato green,tomato green
+0052M4AWB05.px,FruitVeg,12,Upo [Bottle gourd],upo
+0052M4AWB06.px,LeafyVeg,0,Celery,celery
+0052M4AWB06.px,LeafyVeg,1,Broccoli,broccoli
+0052M4AWB06.px,LeafyVeg,2,Cabbage,cabbage
+0052M4AWB06.px,LeafyVeg,3,Cauliflower,cauliflower
+0052M4AWB06.px,LeafyVeg,4,Lettuce head,lettuce head
+0052M4AWB06.px,LeafyVeg,5,Pechay Baguio [Chinese cabbage],pechay baguio
+0052M4AWB06.px,LeafyVeg,6,Pechay native,pechay native
+0052M4AWB07.px,Fruits,0,"Banana Bungulan, ripe*",banana bungulan ripe
+0052M4AWB07.px,Fruits,1,"Banana Lakatan, ripe*",banana lakatan ripe
+0052M4AWB07.px,Fruits,2,"Banana Latundan, ripe*",banana latundan ripe
+0052M4AWB07.px,Fruits,3,"Banana Saba, ripe*",banana saba ripe
+0052M4AWB07.px,Fruits,4,"Banana Saba, Green",banana saba green
+0052M4AWB07.px,Fruits,5,Calamansi,calamansi
+0052M4AWB07.px,Fruits,6,Mandarin Szinkom,mandarin szinkom
+0052M4AWB07.px,Fruits,7,"Mango Carabao, green",mango carabao green
+0052M4AWB07.px,Fruits,8,"Mango Carabao, ripe",mango carabao ripe
+0052M4AWB07.px,Fruits,9,Muskmelon*,muskmelon
+0052M4AWB07.px,Fruits,10,Papaya Hawaiian*,papaya hawaiian
+0052M4AWB07.px,Fruits,11,Pineapple Hawaiian*,pineapple hawaiian
+0052M4AWB07.px,Fruits,12,Watermelon*,watermelon
+0052M4AWB08.px,CommercialCrops,0,Abaca Handstripped,abaca handstripped
+0052M4AWB08.px,CommercialCrops,1,Coconut matured*,coconut matured
+0052M4AWB08.px,CommercialCrops,2,Coffee Arabica (roasted),coffee arabica
+0052M4AWB08.px,CommercialCrops,3,Coffee Robusta (roasted),coffee robusta
+0052M4AWB08.px,CommercialCrops,4,Copra Corriente,copra corriente
+0052M4AWB08.px,CommercialCrops,5,Copra Resecada,copra resecada
+0052M4AWB08.px,CommercialCrops,6,Tobacco Virginia,tobacco virginia
+0052M4AWB09.px,PoultryEggs,0,Chicken egg*,chicken egg
+0052M4AWB09.px,PoultryEggs,1,"Duck Eggs, Fresh",duck eggs fresh
+0052M4AWB10.px,Fish,0,Alumahan [Indian mackerel],alumahan
+0052M4AWB10.px,Fish,1,Bangus [Milkfish],bangus
+0052M4AWB10.px,Fish,2,Bisugo [Threadfin bream],bisugo
+0052M4AWB10.px,Fish,3,"Crab, Alimasag [Blue crab]",crab alimasag
+0052M4AWB10.px,Fish,4,"Dalagang-Bukid, bilog [Caesio]",dalagang bukid bilog
+0052M4AWB10.px,Fish,5,"Dalagang-Bukid, lapad [Caesio]",dalagang bukid lapad
+0052M4AWB10.px,Fish,6,Dilis [Anchovies],dilis
+0052M4AWB10.px,Fish,7,Espada [Hairtail],espada
+0052M4AWB10.px,Fish,8,Galunggong [Roundscad],galunggong
+0052M4AWB10.px,Fish,9,Hasa-hasa [Indo-Pacific mackerel],hasa hasa
+0052M4AWB10.px,Fish,10,Kalaso [Lizard fish],kalaso
+0052M4AWB10.px,Fish,11,Lapu-lapu [Grouper],lapu lapu
+0052M4AWB10.px,Fish,12,"Lapu-lapu [Grouper], other than red species",lapu lapu other than red species
+0052M4AWB10.px,Fish,13,Matang-baka [Big-eyed scad],matang baka
+0052M4AWB10.px,Fish,14,Pusit [Squid],pusit
+0052M4AWB10.px,Fish,15,Salay-salay [Crevalle],salay salay
+0052M4AWB10.px,Fish,16,Sapsap [Slipmouth],sapsap
+0052M4AWB10.px,Fish,17,"Shrimp, Suaje [Endeavor prawn]",shrimp suaje
+0052M4AWB10.px,Fish,18,"Shrimp, Sugpo [Tiger prawn]",shrimp sugpo
+0052M4AWB10.px,Fish,19,Talakitok [Cavalla],talakitok
+0052M4AWB10.px,Fish,20,Tambakol [Yellowfin tuna],tambakol
+0052M4AWB10.px,Fish,21,Tamban [Indian sardines],tamban
+0052M4AWB10.px,Fish,22,Tanigue [Spanish mackerel],tanigue
+0052M4AWB10.px,Fish,23,Tilapia,tilapia
+0052M4AWB10.px,Fish,24,Tulingan [Frigate tuna],tulingan
+0052M4AWB10.px,Fish,25,White Shrimp,white shrimp
