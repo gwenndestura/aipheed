@@ -246,29 +246,59 @@ def test_config_describes_both_models():
         assert h["question"]
 
 
-def test_forecast_horizon_reaches_one_quarter_further():
-    now = client.get("/api/v1/quarters?horizon=nowcast").json()
-    fut = client.get("/api/v1/quarters?horizon=forecast").json()
-    # The forecast model attaches features at t-1, so it can score a quarter
-    # the nowcast has no features for.
-    assert ref_index(fut["current"]) == ref_index(now["current"]) + 1
-    assert fut["lagQuarters"] == now["lagQuarters"] - 1
-
-
 def ref_index(quarter: str) -> int:
     year, q = quarter.split("-Q")
     return int(year) * 4 + int(q) - 1
 
 
-def test_nowcast_cannot_score_the_forecast_only_quarter():
-    edge = client.get("/api/v1/quarters?horizon=forecast").json()["current"]
-    r = client.get(f"/api/v1/forecast?scope=province&id=batangas&quarter={edge}&horizon=nowcast")
-    assert r.status_code == 404
-    assert r.json()["error"]["code"] == "forecast_not_found"
+def next_quarter(quarter: str) -> str:
+    i = ref_index(quarter) + 1
+    return f"{i // 4}-Q{i % 4 + 1}"
 
-    ok = client.get(f"/api/v1/forecast?scope=province&id=batangas&quarter={edge}&horizon=forecast")
-    assert ok.status_code == 200
-    assert ok.json()["riskScore"] is not None
+
+def test_both_horizons_reach_the_same_edge():
+    """
+    The forecast horizon used to reach one quarter further than the nowcast,
+    and until 2026-09-09 it did: the feature matrix was capped at 2025-Q4 by a
+    hardcoded MODEL_QUARTERS range, so joining the government features at t-1
+    bought the forecast model 2026-Q1 that the nowcast had no features for.
+
+    That cap is gone -- the window now tracks the calendar -- so the binding
+    constraint is the PSA production panel itself. Neither horizon can score a
+    quarter with no production row to compare against, and the t-1 join no
+    longer buys any reach.
+
+    The forecast model is still worth serving, but for the other reason: it
+    uses no same-quarter information, so it is the one that could be run before
+    a quarter closes.
+    """
+    now = client.get("/api/v1/quarters?horizon=nowcast").json()
+    fut = client.get("/api/v1/quarters?horizon=forecast").json()
+
+    assert ref_index(fut["current"]) == ref_index(now["current"])
+    assert fut["lagQuarters"] == now["lagQuarters"]
+    # Both are bounded by the same published panel, so they expose the same
+    # selectable range rather than the forecast carrying one extra entry.
+    assert [q["id"] for q in fut["quarters"]] == [q["id"] for q in now["quarters"]]
+
+
+def test_neither_horizon_scores_past_the_panel_edge():
+    """A quarter with no production row is absent for both horizons, not zero."""
+    edge = client.get("/api/v1/quarters?horizon=nowcast").json()["current"]
+    beyond = next_quarter(edge)
+
+    for horizon in ("nowcast", "forecast"):
+        ok = client.get(
+            f"/api/v1/forecast?scope=province&id=batangas&quarter={edge}&horizon={horizon}"
+        )
+        assert ok.status_code == 200, horizon
+        assert ok.json()["riskScore"] is not None, horizon
+
+        gone = client.get(
+            f"/api/v1/forecast?scope=province&id=batangas&quarter={beyond}&horizon={horizon}"
+        )
+        assert gone.status_code == 404, horizon
+        assert gone.json()["error"]["code"] == "forecast_not_found", horizon
 
 
 def test_responses_declare_which_horizon_produced_them():

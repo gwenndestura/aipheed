@@ -37,10 +37,21 @@ persistence emits a bare yes/no and cannot rank at all, so it cannot answer
 "which of this province's series should be looked at first" -- which is the
 question a triage tool is actually for.
 
-Coverage bonus. Because the government features are joined at t-1, this model
-can score one quarter PAST the feature matrix's edge: 2026-Q1 is scoreable
-from 2025-Q4 features, where the nowcast needs 2026-Q1 features that do not
-exist yet.
+No coverage bonus any more -- corrected 2026-09-10. This section used to claim
+the t-1 join let this model score one quarter PAST the feature matrix's edge.
+That was true while MODEL_QUARTERS was a hardcoded range ending at 2025-Q4: the
+nowcast needed 2026-Q1 features that did not exist, and the forecast did not.
+
+The window now tracks the calendar, so the feature matrix reaches the PSA
+production panel's own edge and the panel is the binding constraint. A quarter
+with no production row cannot be scored by either model, and both currently
+stop at the same quarter.
+
+What remains, and it is the whole justification for serving this variant: every
+contemporaneous feature is taken at t-1, so a quarter can be scored from
+information that existed before it began. That is what makes it a forecast
+rather than a monitoring figure -- not extra reach. Do not repeat the coverage
+argument in the write-up.
 
 Outputs
 -------
