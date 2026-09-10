@@ -10,3 +10,9 @@ backend/data/archive/
 # Relevance-gate labelling sample: regenerable from the scripts, and the
 # workbook is a working file that changes on every save.
 backend/data/processed/relevance_eval/
+
+# Parallel reimplementation kept deliberately out of the repository. It carries
+# its own train.py and config.py, so anything pushed from it would produce
+# numbers that look authoritative while disagreeing with backend/. Local only,
+# by decision (2026-09-10).
+aiPHeed_Simplified_Methodology/
